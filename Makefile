@@ -7,7 +7,7 @@
   CFLAGS = -g -Wall
 
 # The build target 
-  TARGET = program
+  TARGET = program player
 
 all: $(TARGET)
  
