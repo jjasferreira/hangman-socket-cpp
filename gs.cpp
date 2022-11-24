@@ -13,6 +13,8 @@ pair<string, string> get_word(string word_file);
 int GSport = 58000 + GN;
 
 int main(int argc, char* argv[]) {
+    int fd;
+
     if (argc < 1) {
         throw invalid_argument("No word file specified");
     }
@@ -28,6 +30,14 @@ int main(int argc, char* argv[]) {
     else if (argc > 2) {
         GSport = atoi(argv[2]);
     }
+
+    // open udp socket
+    // fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        throw runtime_error("Error opening socket");
+    }
+
+
     return 0;
 }
 
