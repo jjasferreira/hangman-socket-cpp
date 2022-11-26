@@ -1,3 +1,5 @@
+# todo
+
 - Ask the teachers about what flags to use in the Makefile
 
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself)
