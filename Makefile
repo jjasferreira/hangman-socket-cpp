@@ -7,12 +7,15 @@
   CFLAGS = -g -Wall
 
 # The build target 
-  TARGET = player
+  TARGET = gs player
 
 all: $(TARGET)
  
-$(TARGET): $(TARGET).cpp
-	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).cpp
+gs: gs.cpp
+	$(CC) $(CFLAGS) -o gs gs.cpp
+
+player: player.cpp
+	$(CC) $(CFLAGS) -o player player.cpp
  
 clean:
 	$(RM) $(TARGET)
