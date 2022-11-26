@@ -5,12 +5,16 @@
 #include <sstream>
 #include <cstring>
 #include <algorithm>
+#include <stdexcept>
 
 using namespace std;
 
 #define GN 0    // TODO: change group number
 
 // ======================================== Declarations ===========================================
+
+// Player ID
+string PLID = "";
 
 // Checks if the given string is composed of digits only and of length 6
 bool is_valid_plid(const string &str);
@@ -25,8 +29,9 @@ void close_udp_socket(int sock);
 addrinfo* get_server_address(string gsIP, string gsPort);
 
 // Function that operates the commands
-string handle_command(string comm, string args, int sock, addrinfo *server);
+void handle_command(string comm, string args, int sock, addrinfo *server);
 
+// Request the game server to start the game
 string start(int sock, addrinfo *server, string PLID);
 
 // ============================================ Main ===============================================
@@ -37,8 +42,7 @@ int main(int argc, char *argv[]) {
     string gsIP = "";
     string gsPort = to_string(58000 + GN);
 
-    // Player ID and Input line, comm and arguments
-    string PLID;
+    // Input line, command and arguments
     string line, comm, args;
 
     // Set IP and Port ([-n gsIP] [-p gsPort])
@@ -57,7 +61,7 @@ int main(int argc, char *argv[]) {
         getline(cin, line);
         stringstream(line) >> comm >> args;
         int sock = create_udp_socket();
-        PLID = handle_command(comm, args, sock, server);
+        handle_command(comm, args, sock, server);
         close_udp_socket(sock);
     }
 
@@ -65,13 +69,8 @@ int main(int argc, char *argv[]) {
     freeaddrinfo(server);
 
     /*
-    // Number of letters in the word, Maximum number of errors allowed and number of errors made
-    int numLetters;
-    int maxErrors;
-    int numErrors;
-
-    // Talks to server and sets game to True if ID is valid
-    game = true;
+    // Number of letters in the word, maximum number of errors allowed and number of errors made
+    int numLetters, maxErrors, numErrors;
     */
 
     return 0;
@@ -84,7 +83,7 @@ int create_udp_socket() {
 
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock == -1)
-        exit(1);
+        throw runtime_error("Error opening socket");
     return sock;
 }
 
@@ -100,7 +99,8 @@ addrinfo* get_server_address(string gsIP, string gsPort) {
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
     errcode = getaddrinfo(gsIP.c_str(), gsPort.c_str(), &hints, &server);
-    if (errcode != 0) exit(1);
+    if (errcode != 0)
+        throw runtime_error("Error getting address info");
     return server;
 }
 
@@ -108,14 +108,14 @@ bool is_valid_plid(const string &str) {
     return all_of(str.begin(), str.end(), ::isdigit) && (str.length() == 6);
 }
 
-string handle_command(string comm, string args, int sock, addrinfo *server) {
+void handle_command(string comm, string args, int sock, addrinfo *server) {
     if (comm == "start" || comm == "sg") {
-        if (!is_valid_plid(args))
-            cout << "Invalid PLID" << endl;
-        else {
+        if (is_valid_plid(args)) {
+            PLID = args;
             start(sock, server, args);
-            return args;
         }
+        else
+            throw invalid_argument("Invalid PLID");
     }
     else if (comm == "play" || comm == "pl") {
     }
@@ -132,8 +132,7 @@ string handle_command(string comm, string args, int sock, addrinfo *server) {
     else if (comm == "exit") {
     }
     else
-        cout << "Invalid command" << endl;
-    return ""; // TODO: what to do in this case?
+        throw invalid_argument("Invalid command");
 }
 
 string start(int sock, addrinfo *server, string PLID) {
@@ -146,15 +145,15 @@ string start(int sock, addrinfo *server, string PLID) {
     string msg = "SNG " + PLID + "\n";
     n = sendto(sock, msg.c_str(), 11, 0, server->ai_addr, server->ai_addrlen);
     if (n == -1)
-        exit(1);
+        throw runtime_error("Error sending start message");;
 
     // Receive a message from the server
     addrlen = sizeof(addr);
     n = recvfrom(sock, buffer, 128, 0, (struct sockaddr*) &addr, &addrlen);
-    if(n == -1)
-        exit(1);
+    if (n == -1)
+        throw runtime_error("Error receiving start confirmation");;
 
-    // TODO: remove this
+    // TODO: remove this (to see if it works)
     write(1, buffer, n);
     printf(buffer);
 
