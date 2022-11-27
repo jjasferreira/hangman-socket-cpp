@@ -35,9 +35,15 @@
 
 - What flags should we be using to compile the code in the Makefile?
 
+- When PLID is not digit-only or is of length bigger than 6, should we treat the error in the player level or in the GS level and return NOK?
+
+- When input is incorrect (e.g. PLID with 7 digits) should we throw an instance of 'std::invalid_argument' and therefore terminate the program or just printf() the mistake and continue the commmand handling loop?
+
 ---
 
 ## teacher tips
+
+- All UDP and TCP connections are closed immediately after the command has been run
 
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
 
