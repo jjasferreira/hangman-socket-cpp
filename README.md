@@ -8,7 +8,7 @@
   - [x] player (SNG)
   - [ ] gs (RSG)
 - _play/pl_
-  - [ ] player (PLG)
+  - [x] player (PLG)
   - [ ] gs (RLG)
 - _guess/gw_
   - [ ] player (PWG)
@@ -35,9 +35,13 @@
 
 - What flags should we be using to compile the code in the Makefile?
 
-- When PLID is not digit-only or is of length bigger than 6, should we treat the error in the player level or in the GS level and return NOK?
+- When PLID is not digit-only or is of length bigger than 6, should we treat the error in the player level or in the GS level and return ERR/RSG NOK?
 
-- When input is incorrect (e.g. PLID with 7 digits) should we throw an instance of 'std::invalid_argument' and therefore terminate the program or just printf() the mistake and continue the commmand handling loop?
+- When input is incorrect (e.g. PLID with 7 digits) should we throw an error (e.g.'std::invalid_argument') and therefore terminate the program or just print the mistake to the terminal and continue the commmand handling loop?
+
+- Should we print a custom message for each different possible play scenario (e.g. DUP, WIN, ...) to the user terminal or only "Word: _ e _ o l", as in the project statement?
+
+- We are not receiving any message from the GS. Should we use recvfrom with a timer or select()? If so, how does select work?
 
 ---
 
