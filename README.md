@@ -11,7 +11,7 @@
   - [x] player (PLG)
   - [ ] gs (RLG)
 - _guess/gw_
-  - [ ] player (PWG)
+  - [x] player (PWG)
   - [ ] gs (RWG)
 - _quit_
   - [ ] player (QUT)
@@ -43,9 +43,20 @@
 
 - We are not receiving any message from the GS. Should we use recvfrom with a timer or select()? If so, how does select work?
 
+- Should we check if a letter, word or PLID are valid according to the syntax or just send them anyway?
+
+- Are you expecting us to print the number of attempts left throughout the game?
+
+- On the project statement, it says "OVR, if the word guess is not correct and there are no more attempts
+  available (the maximum number of errors or the maximum number of trials was reached)". Where is this maximum number of trials spoken about exactly?
+
+- Do we create a new process entirely on the TCP server when the new connection socket is created or do we keep both sockets of the server running on the same process? If it is the first one, then do we kill the unused socket in each process (listenfd and connfd, as in the slides)?
+
 ---
 
 ## teacher tips
+
+- Verify if port is between 1024 and 65536
 
 - All UDP and TCP connections are closed immediately after the command has been run
 
