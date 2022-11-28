@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <cctype>
 #include <vector>
+// #include <sys/socket.h>
 
 using namespace std;
 
@@ -15,23 +16,20 @@ using namespace std;
 
 // ======================================== Declarations ===========================================
 
-// Player ID, game status and number of trials, number of letters in the word, maximum number of errors allowed and number of errors made
-string PLID;
-bool game = false;
-vector<char> stateWord;
-int numLetters, maxErrors;
-int numErrors;
-int numTrials;
+struct addrinfo *addr_udp, *addr_tcp;   // addrinfo structs for UDP and TCP connections
+string PLID;                            // Player ID
+bool game = false;                      // Game status
+vector<char> stateWord;                 // Current state of the word
+int numLetters, maxErrors;              // Number of trials, number of letters in the word
+int numErrors, numTrials;               // Max number of errors allowed, number of errors made
 
 // Get the IP address of the given game server
-addrinfo* get_server_address(string gsIP, string gsPort);
-// Create a socket using IPv4 and the UDP protocol
-int create_udp_socket();
-// Close the socket
-void close_udp_socket(int sock);
+addrinfo* get_server_address(string gsIP, string gsPort, string prot = "udp");
+// Create sockets using IPv4 and the UDP or TCP protocol
+int create_socket(string prot = "udp");
 
 // Function that operates the commands
-void handle_command(string comm, string arg, int sock, addrinfo *server);
+void handle_command(string comm, string arg);
 
 // Sends a message to the server using the given socket
 string request(int sock, addrinfo *server, string req);
@@ -45,6 +43,7 @@ bool is_valid_word(const string &arg);    // letters only and is of length 1 or 
 void handle_reply_start(string rep, string arg);
 void handle_reply_play(string rep, string arg);
 void handle_reply_guess(string rep, string arg);
+void handle_reply_quit(string rep, string arg);
 
 // ============================================ Main ===============================================
 
@@ -65,93 +64,119 @@ int main(int argc, char *argv[]) {
             gsPort = argv[i + 1];
     }
 
-    // Get the Game Server address
-    struct addrinfo *server = get_server_address(gsIP, gsPort);
+    // Get the Game Server addresses for UDP and TCP connections
+    addr_udp = get_server_address(gsIP, gsPort);
+    addr_tcp = get_server_address(gsIP, gsPort, "tcp");
 
     // Listen for instructions from the Player
     while (true) {
         getline(cin, line);
         stringstream(line) >> comm >> arg;
-        int sock = create_udp_socket();
-        handle_command(comm, arg, sock, server);
-        close_udp_socket(sock);
+        handle_command(comm, arg);
     }
 
-    // Forget the game server address and return
-    freeaddrinfo(server);
+    // Forget the game server addresses and return
+    freeaddrinfo(addr_udp);
+    freeaddrinfo(addr_tcp);
     return 0;
 }
 
 // ==================================== Auxiliary Functions ========================================
 
-addrinfo* get_server_address(string gsIP, string gsPort) {
-    int errcode;
+addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
+    int errcode, type = SOCK_DGRAM;
     struct addrinfo hints, *server;
-
+    if (prot == "tcp")
+        type = SOCK_STREAM;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_socktype = type;
     errcode = getaddrinfo(gsIP.c_str(), gsPort.c_str(), &hints, &server);
     if (errcode != 0)
-        throw runtime_error("Error getting address info");
+        throw runtime_error("Error getting address info.");
     return server;
 }
 
-int create_udp_socket() {
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+int create_socket(string prot) {
+    int type = SOCK_DGRAM;
+    if (prot == "tcp")
+        type = SOCK_STREAM;
+    int sock = socket(AF_INET, type, 0);
     if (sock == -1)
-        throw runtime_error("Error opening socket");
+        throw runtime_error("Error opening " + prot + " socket.");
     return sock;
 }
 
-void close_udp_socket(int sock) {
-    close(sock);
-}
-
-void handle_command(string comm, string arg, int sock, addrinfo *server) {
+void handle_command(string comm, string arg) {
     string req, rep;
+    int sock;
     // Start
     if (comm == "start" || comm == "sg") {
         if (!is_valid_plid(arg))    // Exception
-            cout << "Invalid PLID" << endl;
+            cout << "Invalid PLID." << endl;
         else {
             req = "SNG " + arg + "\n";
-            rep = request(sock, server, req);
+            sock = create_socket();
+            rep = request(sock, addr_udp, req);
+            close(sock);
             handle_reply_start(rep, arg);
         }
     }
     // Play
     else if (comm == "play" || comm == "pl") {
         if (!is_valid_letter(arg))  // Exception
-            cout << "Invalid letter" << endl;
+            cout << "Invalid letter." << endl;
         else {
-            req = "PLG " + PLID + " " + arg + " " + to_string(++numTrials) + "\n";
-            rep = request(sock, server, req);
+            req = "PLG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
+            sock = create_socket();
+            rep = request(sock, addr_udp, req);
+            close(sock);
             handle_reply_play(rep, arg);
         }
     }
     // Guess
     else if (comm == "guess" || comm == "gw") {
         if (!is_valid_word(arg))    // Exception
-            cout << "Invalid word" << endl;
+            cout << "Invalid word." << endl;
         else {
-            req = "PWG " + PLID + " " + arg + " " + to_string(++numTrials) + "\n";
-            rep = request(sock, server, req);
+            req = "PWG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
+            sock = create_socket();
+            rep = request(sock, addr_udp, req);
+            close(sock);
             handle_reply_guess(rep, arg);
         }
     }
     else if (comm == "scoreboard" || comm == "sb") {
+        req = "QUT " + PLID + "\n";
+        sock = create_socket("tcp");
+        rep = request(sock, addr_tcp, req);
+        close(sock);
+        // handle_reply_scoreboard(rep, arg);
     }
     else if (comm == "hint" || comm == "h") {
     }
     else if (comm == "state" || comm == "st") {
     }
+    // Quit
     else if (comm == "quit") {
+        req = "QUT " + PLID + "\n";
+        sock = create_socket();
+        rep = request(sock, addr_udp, req);
+        close(sock);
+        handle_reply_quit(rep, arg);
     }
+    // Exit
     else if (comm == "exit") {
+        req = "QUT " + PLID + "\n";
+        sock = create_socket();
+        rep = request(sock, addr_udp, req);
+        close(sock);
+        handle_reply_quit(rep, arg);
+        cout << "Exiting..." << endl;
+        exit(0);
     }
     else
-        cout << "Invalid command" << endl;
+        cout << "Invalid command." << endl;
     return;
 }
 
@@ -176,13 +201,13 @@ string request(int sock, addrinfo *server, string req) {
     // Send a message to the server
     n = sendto(sock, req.c_str(), req.length(), 0, server->ai_addr, server->ai_addrlen);
     if (n == -1)
-        throw runtime_error("Error sending play message");
+        throw runtime_error("Error sending play message.");
 
     // Receive a message from the server
     addrlen = sizeof(addr);
     n = recvfrom(sock, buffer, 128, 0, (struct sockaddr*) &addr, &addrlen);
     if (n == -1)
-        throw runtime_error("Error receiving play confirmation");
+        throw runtime_error("Error receiving play confirmation.");
     
     return buffer;
 }
@@ -195,7 +220,7 @@ void handle_reply_start(string rep, string arg) {
     
     // "NOK": The player has an ongoing game
     if (strcmp(status.c_str(), "NOK") == 0)
-        cout << "There is an ongoing game for this Player" << endl;
+        cout << "There is an ongoing game for this Player." << endl;
     // "OK": The letter guess was successful
     else {
         ss >> numLetters >> maxErrors;
@@ -213,13 +238,13 @@ void handle_reply_start(string rep, string arg) {
 
 void handle_reply_play(string rep, string arg) {
     // Handle reply to a play request (RLG status trial [n pos*])
-    string type, status;
+    string type, status, res;
     stringstream ss(rep);
     ss >> type >> status;
 
     // "ERR": There is no ongoing game or the syntax of the request or PLID are invalid
     if (strcmp(status.c_str(), "ERR") == 0)
-        cout << "The request or the PLID are invalid or there is no ongoing game for this Player" << endl;
+        cout << "The request or the PLID are invalid or there is no ongoing game for this Player." << endl;
     else {
     ss >> numTrials;
         // "OK": The letter guess was successful
@@ -230,23 +255,33 @@ void handle_reply_play(string rep, string arg) {
                 ss >> pos;
                 stateWord[pos - 1] = arg[0];
             }
-            string res = "Word: ";
             for (char i: stateWord)
                 res += string(1, i) + " ";
-            cout << "Correct guess! " << res << endl;
+            cout << "Correct guess!\tWord: " << res << endl;
         }
         // "WIN": The letter guess completes the word
         else if (strcmp(status.c_str(), "WIN") == 0) {
             game = false;
-            cout << "You won!" << endl;
+            for (int i = 0; i < numLetters; i++) {
+                if (stateWord[i] == '_')
+                    stateWord[i] = arg[0];
+            }
+            for (char i: stateWord)
+                res += string(1, i) + " ";
+            cout << "You won!\tWord: " << res << endl;
         }
         // "DUP": The letter guess was already made
-        else if (strcmp(status.c_str(), "DUP") == 0)
-            cout << "Duplicate letter" << endl;
+        else if (strcmp(status.c_str(), "DUP") == 0) {
+            for (char i: stateWord)
+                res += string(1, i) + " ";
+            cout << "Duplicate letter!\tWord: " << res << endl;
+        }
         // "NOK": The letter guess was not successful
         else if (strcmp(status.c_str(), "NOK") == 0) {
             numErrors++;
-            cout << "Wrong letter" << endl;
+            for (char i: stateWord)
+                res += string(1, i) + " ";
+            cout << "Wrong letter!\tWord: " << res << endl;
         }
         // "OVR": The letter guess was not successful and the game is over
         else if (strcmp(status.c_str(), "OVR") == 0) {
@@ -255,7 +290,7 @@ void handle_reply_play(string rep, string arg) {
         }
         // "INV": The trial number is invalid
         else if (strcmp(status.c_str(), "INV") == 0)
-            cout << "Invalid trial number" << endl;
+            cout << "Invalid trial number." << endl;
     }
     return;
 }
@@ -274,12 +309,18 @@ void handle_reply_guess(string rep, string arg) {
         // "WIN": The word guess was successful
         if (strcmp(status.c_str(), "WIN") == 0) {
             game = false;
-            cout << "You won!" << endl;
+            string res;
+            for (char i: arg)
+                res += string(1, i) + " ";
+            cout << "You won!\tWord: " << res << endl;
         }
         // "NOK": The word guess was not successful
         else if (strcmp(status.c_str(), "NOK") == 0) {
             numErrors++;
-            cout << "Wrong word" << endl;
+            string res;
+            for (char i: stateWord)
+                res += string(1, i) + " ";
+            cout << "Wrong guess!\tWord: " << res << endl;
         }
         // "OVR": The word guess was not successful and the game is over
         else if (strcmp(status.c_str(), "OVR") == 0) {
@@ -288,7 +329,23 @@ void handle_reply_guess(string rep, string arg) {
         }
         // "INV": The trial number is invalid
         else if (strcmp(status.c_str(), "INV") == 0)
-            cout << "Invalid trial number" << endl;
+            cout << "Invalid trial number." << endl;
+    }
+    return;
+}
+
+void handle_reply_quit(string rep, string arg) {
+    // Handle reply to a quit request (RQT status)
+    string type, status;
+    stringstream(rep) >> type >> status;
+    
+    // "ERR": There is no ongoing game for this Player
+    if (strcmp(status.c_str(), "ERR") == 0)
+        cout << "There is no ongoing game for this Player." << endl;
+    // "OK": There was an ongoing game and it was successfully quit
+    else {
+        game = false; // TODO: do we have to close TCP connections on this side?
+        cout << "Game successfully quit." << endl;
     }
     return;
 }
