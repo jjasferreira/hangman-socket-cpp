@@ -41,9 +41,11 @@
 
 - Should we print a custom message for each different possible play scenario (e.g. DUP, WIN, ...) to the user terminal or only "Word: _ e _ o l", as in the project statement?
 
-- We are not receiving any message from the GS. Should we use recvfrom with a timer or select()? If so, how does select work?
+- Should we use recvfrom with a timer or select()? If so, how does select work?
 
 - Should we check if a letter, word or PLID are valid according to the syntax or just send them anyway?
+
+- Should we have a welcome message to indicate which commands are available for use or not?
 
 - Are you expecting us to print the number of attempts left throughout the game?
 
@@ -55,10 +57,6 @@
 ---
 
 ## teacher tips
-
-- Verify if port is between 1024 and 65536
-
-- All UDP and TCP connections are closed immediately after the command has been run
 
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
 
