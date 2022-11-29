@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <cctype>
 #include <vector>
+// #include <stdio.h>
 // #include <sys/socket.h>
 
 using namespace std;
@@ -46,6 +47,7 @@ void handle_reply_play(string rep, string arg);
 void handle_reply_guess(string rep, string arg);
 void handle_reply_scoreboard(string rep, string arg);
 void handle_reply_quit(string rep, string arg);
+void handle_reply_reveal(string rep, string arg);
 
 // ============================================ Main ===============================================
 
@@ -149,6 +151,7 @@ void handle_command(string comm, string arg) {
             handle_reply_guess(rep, arg);
         }
     }
+    // TODO: Scoreboard
     else if (comm == "scoreboard" || comm == "sb") {
         req = "GSB\n";
         sock = create_socket("tcp");
@@ -156,8 +159,10 @@ void handle_command(string comm, string arg) {
         close(sock);
         handle_reply_scoreboard(rep, arg);
     }
+    // TODO: Hint
     else if (comm == "hint" || comm == "h") {
     }
+    // TODO: State
     else if (comm == "state" || comm == "st") {
     }
     // Quit
@@ -177,6 +182,14 @@ void handle_command(string comm, string arg) {
         handle_reply_quit(rep, arg);
         cout << "Exiting..." << endl;
         exit(0);
+    }
+    // Reveal
+    else if (comm == "rev") {
+        req = "REV " + PLID + "\n";
+        sock = create_socket();
+        rep = request(sock, addr_udp, req);
+        close(sock);
+        handle_reply_reveal(rep, arg);
     }
     else
         cout << "Invalid command." << endl;
@@ -322,7 +335,7 @@ void handle_reply_guess(string rep, string arg) {
     
     // "ERR": There is no ongoing game or the syntax of the request or PLID are invalid
     if (strcmp(status.c_str(), "ERR") == 0)
-        cout << "The request or the PLID are invalid or there is no ongoing game for this Player" << endl;
+        cout << "The request or the PLID are invalid or there is no ongoing game for this Player." << endl;
     else {
     ss >> numTrials;
         // "WIN": The word guess was successful
@@ -361,7 +374,7 @@ void handle_reply_scoreboard(string rep, string arg) {
     
     // "EMPTY": The scoreboard is empty
     if (strcmp(status.c_str(), "EMPTY") == 0)
-        cout << "The scoreboard is still empty. No game was yet won by any player" << endl;
+        cout << "The scoreboard is still empty. No game was yet won by any player." << endl;
     // "OK": The scoreboard is not empty
     else {
         string fname;
@@ -384,6 +397,29 @@ void handle_reply_quit(string rep, string arg) {
     else {
         game = false; // TODO: do we have to close TCP connections on this side?
         cout << "Game successfully quit." << endl;
+    }
+    return;
+}
+
+void handle_reply_reveal(string rep, string arg) {
+    // (RRV word/status)
+    string type, status;
+    stringstream(rep) >> type >> status;
+    
+    // "ERR": There is no ongoing game
+    if (strcmp(status.c_str(), "ERR") == 0)
+        cout << "There is no ongoing game for this Player." << endl;
+    // "word": The word was successfully revealed
+    else {
+        game = false;
+        string res;
+        for (char i: status)
+            res += string(1, i) + " ";
+        cout << "You have revealed the word: " << res << endl;
+        int sock = create_socket();
+        rep = request(sock, addr_udp, "QUT " + PLID + "\n");
+        close(sock);
+        handle_reply_quit(rep, arg);
     }
     return;
 }

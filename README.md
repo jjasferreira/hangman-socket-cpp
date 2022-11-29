@@ -14,12 +14,12 @@
   - [x] player (PWG)
   - [ ] gs (RWG)
 - _quit_
-  - [ ] player (QUT)
+  - [x] player (QUT)
   - [ ] gs (RQT)
 - _rev_
-  - [ ] player (REV)
+  - [x] player (REV) (change to return OK instead of word)
   - [ ] gs (RRV)
-- [ ] _exit_
+- [x] _exit_
 
 **tcp**:
 
@@ -41,7 +41,7 @@
 
 - Should we print a custom message for each different possible play scenario (e.g. DUP, WIN, ...) to the user terminal or only "Word: _ e _ o l", as in the project statement?
 
-- Should we use recvfrom with a timer or select()? If so, how does select work?
+- Should we use setsockopt(), select() or SIGNALS to have a timer in the reception of data from the server?
 
 - Should we check if a letter, word or PLID are valid according to the syntax or just send them anyway?
 
@@ -58,8 +58,12 @@
 
 ## teacher tips
 
+- During the execution of the client and the server, we have to verify that the commands are well inserted (start, play, etc) and that the messages are also well formatted (SNG XXXXXX, RSG OK … …, etc)
+
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
+
+- fork() on the server, we have to delete the child proccesses after they are done (SIGPIPE KILL CHILD)
 
 - Specifying which type of error is occuring when it comes to transporting data might be good
 
-- Sometimes it may be needed to read() or write() multiple times to receive/send the full message
+- Sometimes it may be needed to read() or write() multiple times to receive/send the full message - In the TCP protocol, when sending large data such as images, as the buffer size is much smaller than the file size, the file is divided into several pieces and on the other side, the client picks them up and joins them. (In the case of TCP, even when the entire message fits in the buffer, the TCP implementation may decide to split the message into several TCP segments, so we should always write and read in a cycle, checking what has already been written/read, to ensure that everything is written/read.)
