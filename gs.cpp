@@ -27,9 +27,7 @@ boolean verbose = false;
 // ============================================ Main ===============================================
 
 int main(int argc, char* argv[]) {
-    int udp_sock, tcp_sock;
     ssize_t n;
-    pid_t pid;
     struct addrinfo hints, *res;
     struct sockaddr_in addr;
     char buffer[1024]; //copilot set this to 1024 hello copilot
@@ -67,12 +65,16 @@ int main(int argc, char* argv[]) {
     if (getaddrinfo(NULL, gsPort.c_str(), &hints, &res) != 0)
         throw runtime_error("getaddrinfo() failed");
 
+    // Bind socket
     n = bind(udp_sock, res->ai_addr, res->ai_addrlen);
     if (n < 0)
         throw runtime_error("Error binding UDP socket");
     n = bind(tcp_sock, res->ai_addr, res->ai_addrlen);
     if (n < 0)
         throw runtime_error("Error binding TCP socket");
+    
+    if (listen(fd,5) < 0)
+        throw runtime_error("Error listening on TCP socket");
 
     addrlen = sizeof(addr);
 
@@ -80,27 +82,39 @@ int main(int argc, char* argv[]) {
 
     fd_set readfds;
     int nready;
+    int udp_sock, tcp_sock newfd;
+    pid_t pid;
+
+    // Listen to sockets
     while (true) {
         FD_SET(udp_sock, &readfds);
         FD_SET(tcp_sock, &readfds);
 
         max_sock = max(udp_sock, tcp_sock);
+        // select() blocks until there is data to read, sets the bytemap (readfs) to 1 for the socket which has data to read
         nready = select(max_sock + 1, &readfds, NULL, NULL, NULL);
 
+        // Logic for UDP requests
         if (FD_ISSET(udp_sock, &readfds)) {
             n = recvfrom(udp_sock, buffer, 1024, 0, (struct sockaddr *) &addr, &addrlen);
             if (n < 0)
                 throw runtime_error("Error receiving UDP message");
-            
+            handle_udp(buffer, n); // Handle function should fork if the user is new
             if (verbose) continue;
                 // TODO implement verbose
         }
+        // Logic for TCP requests
         else if (FD_ISSET(tcp_sock, &readfds)) {
-            n = recvfrom(tcp_sock, buffer, 1024, 0, (struct sockaddr *) &addr, &addrlen);
+            if((newfd = accept(tcp_sock, (struct sockaddr *) &addr, &addrlen)) < 0)
+                throw runtime_error("Error accepting TCP connection");
+
+            n = read(newfd, buffer, 1024);
             if (n < 0)
-                throw runtime_error("Error receiving TCP message");
-            if (verbose)
-                cout << "Received TCP message" << endl;
+                throw runtime_error("Error reading TCP message");
+            handle_tcp(buffer, n); // TODO implement handle_tcp
+            if (verbose) continue;
+                // TODO implement verbose
+            }
         }
 
     }
