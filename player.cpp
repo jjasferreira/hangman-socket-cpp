@@ -103,9 +103,8 @@ addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
 }
 
 int create_socket(string prot) {
-    int type = SOCK_DGRAM;
-    if (prot == "tcp")
-        type = SOCK_STREAM;
+    // #TODO E se prot for uma cena inválida? (btw se alterares isto altera no servidor tb)
+    int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
     int sock = socket(AF_INET, type, 0);
     if (sock == -1)
         throw runtime_error("Error opening " + prot + " socket.");

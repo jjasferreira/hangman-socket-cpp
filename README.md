@@ -2,6 +2,8 @@
 
 ## todo
 
+- [ ] Detect SIGINT
+
 **udp**:
 
 - _start/sg_
@@ -26,6 +28,7 @@
 - [ ] _scoreboard/sb_
 - [ ] _hint/h_
 - [ ] _state/st_
+
 
 ---
 
