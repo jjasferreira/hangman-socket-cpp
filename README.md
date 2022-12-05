@@ -2,8 +2,6 @@
 
 ## todo
 
-- [ ] Detect SIGINT
-
 **udp**:
 
 - _start/sg_
@@ -29,12 +27,11 @@
 - [ ] _hint/h_
 - [ ] _state/st_
 
-
 ---
 
 ## doubts
 
-- Do we have to create/choose the hint images?
+- Should we have a dict with keys=udp,tcp and values=SOCK_DGRAM,SOCK_STREAM for connection functions scalability or leave it as is?
 
 - What flags should we be using to compile the code in the Makefile?
 
@@ -42,24 +39,23 @@
 
 - When input is incorrect (e.g. PLID with 7 digits) should we throw an error (e.g.'std::invalid_argument') and therefore terminate the program or just print the mistake to the terminal and continue the commmand handling loop?
 
-- Should we print a custom message for each different possible play scenario (e.g. DUP, WIN, ...) to the user terminal or only "Word: _ e _ o l", as in the project statement?
-
-- Should we use setsockopt(), select() or SIGNALS to have a timer in the reception of data from the server?
+- Should we use setsockopt(), select() or SIGNALS to have a timer in the reception of data from the server? In UDP as well or just in TCP?
 
 - Should we check if a letter, word or PLID are valid according to the syntax or just send them anyway?
-
-- Should we have a welcome message to indicate which commands are available for use or not?
-
-- Are you expecting us to print the number of attempts left throughout the game?
-
-- On the project statement, it says "OVR, if the word guess is not correct and there are no more attempts
-  available (the maximum number of errors or the maximum number of trials was reached)". Where is this maximum number of trials spoken about exactly?
 
 - Do we create a new process entirely on the TCP server when the new connection socket is created or do we keep both sockets of the server running on the same process? If it is the first one, then do we kill the unused socket in each process (listenfd and connfd, as in the slides)?
 
 ---
 
 ## teacher tips
+
+- If there is a game in progress when the player gives the command "exit" on the keyboard, the application will ask the server to end the game in progress. All sockets must be closed and memory freed before terminating the application.
+
+- We should have a welcome message to indicate which commands are available and print the number of attempts left throughout the game
+
+- We should indicate there has been an error by printing it when the player receives just ERR
+
+- It is a good idea to detect SIGINT to terminate the game and release memory before exiting (only in C though?, how do we release memory in C++?)
 
 - During the execution of the client and the server, we have to verify that the commands are well inserted (start, play, etc) and that the messages are also well formatted (SNG XXXXXX, RSG OK … …, etc)
 

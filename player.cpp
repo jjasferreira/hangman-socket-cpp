@@ -89,10 +89,9 @@ int main(int argc, char *argv[]) {
 // ==================================== Auxiliary Functions ========================================
 
 addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
-    int errcode, type = SOCK_DGRAM;
+    int errcode;
     struct addrinfo hints, *server;
-    if (prot == "tcp")
-        type = SOCK_STREAM;
+    int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = type;
@@ -103,7 +102,6 @@ addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
 }
 
 int create_socket(string prot) {
-    // #TODO E se prot for uma cena inválida? (btw se alterares isto altera no servidor tb)
     int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
     int sock = socket(AF_INET, type, 0);
     if (sock == -1)
