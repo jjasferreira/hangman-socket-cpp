@@ -31,17 +31,15 @@
 
 ## doubts
 
+- Should we keep the game boolean variable in the player side? Is it really useful?
+
 - Should we have a dict with keys=udp,tcp and values=SOCK_DGRAM,SOCK_STREAM for connection functions scalability or leave it as is?
 
 - What flags should we be using to compile the code in the Makefile?
 
-- When PLID is not digit-only or is of length bigger than 6, should we treat the error in the player level or in the GS level and return ERR/RSG NOK?
-
-- When input is incorrect (e.g. PLID with 7 digits) should we throw an error (e.g.'std::invalid_argument') and therefore terminate the program or just print the mistake to the terminal and continue the commmand handling loop?
+- (ASKED) When any player input is incorrect (e.g. playing a letter without having an ongoing game, sending a PLID with 7 digits) should we send this to the GS and wait for an ERR or do a small check on that input in the player side? If it is the latter, should we throw an error and therefore terminate the program or just print the mistake to the terminal and continue the commmand handling loop?
 
 - Should we use setsockopt(), select() or SIGNALS to have a timer in the reception of data from the server? In UDP as well or just in TCP?
-
-- Should we check if a letter, word or PLID are valid according to the syntax or just send them anyway?
 
 - Do we create a new process entirely on the TCP server when the new connection socket is created or do we keep both sockets of the server running on the same process? If it is the first one, then do we kill the unused socket in each process (listenfd and connfd, as in the slides)?
 

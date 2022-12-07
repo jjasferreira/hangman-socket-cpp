@@ -1,5 +1,6 @@
 #include <netdb.h>
 #include <iostream>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -7,14 +8,10 @@
 #include <stdexcept>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <manifest.h>
-#include <socket.h>
-#include <bsdtypes.h>
-#include <bsdtime.h>
 
 using namespace std;
 
-#define GN 0    // TODO: change group number
+#define GN 92
 
 // ======================================== Declarations ===========================================
 
@@ -22,14 +19,14 @@ int create_socket(string prot = "udp");
 pair<string, string> get_word(string word_file);
 
 string gsPort = to_string(58000 + GN);
-boolean verbose = false;
+bool verbose = false;
 
 // ============================================ Main ===============================================
 
 int main(int argc, char* argv[]) {
-    ssize_t n;
     struct addrinfo hints, *res;
-    struct sockaddr_in addr;
+    socklen_t addrlen;
+    struct sockaddr_in address;
     char buffer[1024]; //copilot set this to 1024 hello copilot
 
     if (argc < 1)
@@ -43,20 +40,22 @@ int main(int argc, char* argv[]) {
         cat = word_cat.second;
         cout << word << endl << cat << endl;
     }
-    else if (argc == 4)
+    else if (argc == 4) {
         if (strcmp(argv[3], "-p"))
             gsPort = argv[3];
-    else if (argc > 4)
+    }
+    else if (argc > 4) {
         if (strcmp(argv[4], "-v"))
             verbose = true;
+    }
     else
         throw invalid_argument("Invalid number of arguments");
 
     // Open sockets (#TODO put this in a function)
-    udp_sock = create_socket();
-    tcp_sock = create_socket("tcp");
+    int udp_sock = create_socket();
+    int tcp_sock = create_socket("tcp");
 
-    memset(hints, 0, sizeof(hints));
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE;
@@ -66,65 +65,56 @@ int main(int argc, char* argv[]) {
         throw runtime_error("getaddrinfo() failed");
 
     // Bind socket
-    n = bind(udp_sock, res->ai_addr, res->ai_addrlen);
-    if (n < 0)
+    if (bind(udp_sock, res->ai_addr, res->ai_addrlen) < 0)
         throw runtime_error("Error binding UDP socket");
-    n = bind(tcp_sock, res->ai_addr, res->ai_addrlen);
-    if (n < 0)
+    if (bind(tcp_sock, res->ai_addr, res->ai_addrlen) < 0)
         throw runtime_error("Error binding TCP socket");
-    
-    if (listen(fd,5) < 0)
+    if (listen(tcp_sock, 5) < 0)
         throw runtime_error("Error listening on TCP socket");
 
-    addrlen = sizeof(addr);
+    addrlen = sizeof(address);
 
     //-----------------
 
     fd_set readfds;
     int nready;
-    int udp_sock, tcp_sock newfd;
+    int newfd;
     pid_t pid;
+    ssize_t n;
 
     // Listen to sockets
     while (true) {
         FD_SET(udp_sock, &readfds);
         FD_SET(tcp_sock, &readfds);
 
-        max_sock = max(udp_sock, tcp_sock);
+        int max_sock = max(udp_sock, tcp_sock);
         // select() blocks until there is data to read, sets the bytemap (readfs) to 1 for the socket which has data to read
         nready = select(max_sock + 1, &readfds, NULL, NULL, NULL);
 
         // Logic for UDP requests
         if (FD_ISSET(udp_sock, &readfds)) {
-            n = recvfrom(udp_sock, buffer, 1024, 0, (struct sockaddr *) &addr, &addrlen);
+            n = recvfrom(udp_sock, buffer, 1024, 0, (struct sockaddr *) &address, &addrlen);
             if (n < 0)
                 throw runtime_error("Error receiving UDP message");
-            handle_udp(buffer, n); // Handle function should fork if the user is new
+            // handle_udp(buffer, n); // Handle function should fork if the user is new
             if (verbose) continue;
                 // TODO implement verbose
         }
         // Logic for TCP requests
         else if (FD_ISSET(tcp_sock, &readfds)) {
-            if((newfd = accept(tcp_sock, (struct sockaddr *) &addr, &addrlen)) < 0)
+            if((newfd = accept(tcp_sock, (struct sockaddr *) &address, &addrlen)) < 0)
                 throw runtime_error("Error accepting TCP connection");
 
             n = read(newfd, buffer, 1024);
             if (n < 0)
                 throw runtime_error("Error reading TCP message");
-            handle_tcp(buffer, n); // TODO implement handle_tcp
+            // handle_tcp(buffer, n); // TODO implement handle_tcp
             if (verbose) continue;
                 // TODO implement verbose
             }
         }
-
+        return 0;
     }
-
-    
-
-
-
-    return 0;
-}
 
 // ==================================== Auxiliary Functions ========================================
 
