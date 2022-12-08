@@ -31,13 +31,15 @@
 
 ## doubts
 
-- Should we keep the game boolean variable in the player side? Is it really useful?
+- When we close the app with Ctrl+C mid-game and then run the executable again, it says that there is an ongoing game when we `start` and that we have quitted it successfully when we `quit`, but why does it say that there is an ongoing game again when we `start` again. Furthermore, when we `play`, it says there is no game. What is going on? Is this a bug?
+
+- Change some string parameters to char\* to avoid using .c_str() or leave it as is?
 
 - Should we have a dict with keys=udp,tcp and values=SOCK_DGRAM,SOCK_STREAM for connection functions scalability or leave it as is?
 
 - What flags should we be using to compile the code in the Makefile?
 
-- (ASKED) When any player input is incorrect (e.g. playing a letter without having an ongoing game, sending a PLID with 7 digits) should we send this to the GS and wait for an ERR or do a small check on that input in the player side? If it is the latter, should we throw an error and therefore terminate the program or just print the mistake to the terminal and continue the commmand handling loop?
+- Because the scoreboard message reply is sent in two parts (RSG OK // fname fsize fdata) using TCP, what is the best way to extract the filename and filesize, given that we read all that inside a loop? Can we read 25 bytes outside the loop to get this info or should we do something inside the loop? Can the filesize help us somehow?
 
 - Should we use setsockopt(), select() or SIGNALS to have a timer in the reception of data from the server? In UDP as well or just in TCP?
 

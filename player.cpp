@@ -8,8 +8,6 @@
 #include <stdexcept>
 #include <cctype>
 #include <vector>
-// #include <stdio.h>
-// #include <sys/socket.h>
 
 using namespace std;
 
@@ -49,7 +47,9 @@ bool is_valid_word(const string &arg);      // letters only and is of length 1 o
 void handle_reply_start(string rep, string arg);
 void handle_reply_play(string rep, string arg);
 void handle_reply_guess(string rep, string arg);
-void handle_reply_scoreboard(string rep, string arg);
+void handle_reply_scoreboard(string rep, string arg, int sock);
+void handle_reply_hint(string rep, string arg, int sock);
+void handle_reply_state(string rep, string arg, int sock);
 void handle_reply_quit(string rep, string arg);
 void handle_reply_reveal(string rep, string arg);
 
@@ -176,16 +176,21 @@ void handle_command(string comm, string arg) {
             handle_reply_guess(rep, arg);
         }
     }
-    // TODO: Scoreboard
+    // Scoreboard
     else if (comm == "scoreboard" || comm == "sb") {
         req = "GSB\n";
         sock = create_socket("tcp");
         rep = request(sock, addr_tcp, req);
+        handle_reply_scoreboard(rep, arg, sock);
         close(sock);
-        handle_reply_scoreboard(rep, arg);
     }
-    // TODO: Hint
+    // Hint
     else if (comm == "hint" || comm == "h") {
+        req = "GHL " + PLID + "\n";
+        sock = create_socket("tcp");
+        rep = request(sock, addr_tcp, req);
+        handle_reply_hint(rep, arg, sock);
+        close(sock);
     }
     // TODO: State
     else if (comm == "state" || comm == "st") {
@@ -217,8 +222,7 @@ void handle_command(string comm, string arg) {
         handle_reply_reveal(rep, arg);
     }
     else
-        cout << "Invalid command." << endl;
-    return;
+        cout << "Invalid command." << endl << endl;
 }
 
 bool is_valid_port(const string &arg) {
@@ -277,7 +281,7 @@ void handle_reply_start(string rep, string arg) {
     
     // "NOK": The player has an ongoing game
     if (strcmp(status.c_str(), "NOK") == 0)
-        cout << "There is an ongoing game for this Player." << endl;
+        cout << "There is an ongoing game for this Player." << endl << endl;
     // "OK": The letter guess was successful
     else {
         ss >> numLetters >> maxErrors;
@@ -288,7 +292,6 @@ void handle_reply_start(string rep, string arg) {
         cout << "New game started successfully." << endl;
         print_word_progress();
     }
-    return;
 }
 
 void handle_reply_play(string rep, string arg) {
@@ -343,7 +346,6 @@ void handle_reply_play(string rep, string arg) {
         else if (strcmp(status.c_str(), "INV") == 0)
             cout << "Invalid trial number." << endl;
     }
-    return;
 }
 
 void handle_reply_guess(string rep, string arg) {
@@ -380,26 +382,83 @@ void handle_reply_guess(string rep, string arg) {
         else if (strcmp(status.c_str(), "INV") == 0)
             cout << "Invalid trial number." << endl;
     }
-    return;
 }
 
-void handle_reply_scoreboard(string rep, string arg) {
+void handle_reply_scoreboard(string rep, string arg, int sock) {
     // (RSB status [Fname Fsize Fdata])
     string type, status;
-    stringstream ss(rep);
-    ss >> type >> status;
+    stringstream(rep) >> type >> status;
     
     // "EMPTY": The scoreboard is empty
     if (strcmp(status.c_str(), "EMPTY") == 0)
         cout << "The scoreboard is still empty. No game was yet won by any player." << endl;
     // "OK": The scoreboard is not empty
     else {
-        string fname;
-        ssize_t fsize, fdata;
-        ss >> fname >> fsize >> fdata;
-        cout << "Scoreboard" << endl << fdata;
+        ssize_t n, filesize;
+        string filename;
+        FILE *fd;
+        char buffer[26];
+    
+        read(sock, buffer, 26);
+        stringstream(buffer) >> filename >> filesize;
+        // Open/create the file
+        if ((fd = fopen(filename.c_str(), "w")) == NULL)
+            throw runtime_error("Error opening/creating file.");
+        // Read from socket to it and print to terminal
+        char buffer2[filesize];
+        while ((n = read(sock, buffer2, filesize)) > 0) {
+            cout << buffer2;
+            // Make sure the entire buffer is written to the file
+            if (fwrite(buffer2, sizeof(char), n, fd) != n*sizeof(char))
+                throw runtime_error("Error writing to file.");
+        }
+        fclose(fd);
     }
-    return;
+}
+void handle_reply_hint(string rep, string arg, int sock) {
+// (RHL status [Fname Fsize Fdata])
+    string type, status;
+    stringstream(rep) >> type >> status;
+    
+    // "NOK": There is no file to be sent or there is some other problem
+    if (strcmp(status.c_str(), "NOK") == 0)
+        cout << "There is no file to be sent." << endl;
+    // "OK": The hint is sent as an image file
+    else {
+        ssize_t n, filesize;
+        string filename ="";
+        FILE *fd;
+        char buffer[128];
+        bool first = true;
+
+        
+        // Read from socket to it and print to terminal
+        while ((n = read(sock, buffer, 128)) > 0) {
+            if (first) {
+                stringstream(buffer) >> filename >> filesize;
+                // Open/create the file
+                if ((fd = fopen(filename.c_str(), "w")) == NULL)
+                    throw runtime_error("Error opening/creating file.");
+                // Skip the filename and filesize
+                char *p = buffer;
+                p += filename.size() + to_string(filesize).size() + 2;
+                first = false;
+                if (fwrite(p, sizeof(char), n, fd) != n*sizeof(char))
+                    throw runtime_error("Error writing to file.");
+                continue;
+            }
+            // Make sure the entire buffer is written to the file
+            if (fwrite(buffer, sizeof(char), n, fd) != n*sizeof(char))
+                throw runtime_error("Error writing to file.");
+        }
+        fclose(fd);
+        cout << "Saved hint to file " << filename << " (" << filesize << " bytes)." << endl;
+        print_word_progress();
+    }
+}
+
+void handle_reply_state(string rep, string arg, int sock) {
+    // TODO
 }
 
 void handle_reply_quit(string rep, string arg) {
@@ -415,7 +474,6 @@ void handle_reply_quit(string rep, string arg) {
         game = false; // TODO: do we have to close TCP connections on this side?
         cout << "Game successfully quit." << endl << endl;
     }
-    return;
 }
 
 void handle_reply_reveal(string rep, string arg) {
@@ -438,5 +496,4 @@ void handle_reply_reveal(string rep, string arg) {
         close(sock);
         handle_reply_quit(rep, arg);
     }
-    return;
 }
