@@ -23,13 +23,21 @@
 
 **tcp**:
 
-- [ ] _scoreboard/sb_
-- [ ] _hint/h_
-- [ ] _state/st_
+- _scoreboard/sb_
+  - [x] player (GSB)
+  - [ ] gs (RSB)
+- _hint/h_
+  - [x] player (GHL)
+  - [ ] gs (RHL)
+- _state/st_
+  - [x] player (STA)
+  - [ ] gs (RST)
 
 ---
 
 ## doubts
+
+- "If there is no ongoing game for this player then status = FIN and the GS server responds with a file containing the summary of the most recently finished game for this player. Upon receiving this summary, the player displays the information and considers the current game as terminated." What game? There is no ongoing game.
 
 - When we close the app with Ctrl+C mid-game and then run the executable again, it says that there is an ongoing game when we `start` and that we have quitted it successfully when we `quit`, but why does it say that there is an ongoing game again when we `start` again. Furthermore, when we `play`, it says there is no game. What is going on? Is this a bug?
 
