@@ -17,9 +17,12 @@ using namespace std;
 
 int create_socket(string prot = "udp");
 pair<string, string> get_word(string word_file);
-
+string gsIP = "localhost";
 string gsPort = to_string(58000 + GN);
 bool verbose = false;
+
+int udp_socket;
+int tcp_socket;
 
 // ============================================ Main ===============================================
 
@@ -27,33 +30,31 @@ int main(int argc, char* argv[]) {
     struct addrinfo hints, *res;
     socklen_t addrlen;
     struct sockaddr_in address;
-    char buffer[1024]; //copilot set this to 1024 hello copilot
+    char buffer[1024]; //copilot set this to 1024
+
+    cout << "argc: " << argc << endl;
 
     if (argc < 1)
         throw invalid_argument("No word file specified");
-    else if (argc == 2) {
+    else if (argc >= 1) {
         string word_file = argv[1];
         string word, cat;
-        // TODO: is there a better way to do this?
         pair<string, string> word_cat = get_word(word_file);
         word = word_cat.first;
         cat = word_cat.second;
-        cout << word << endl << cat << endl;
+        // cout << "1 " << word << " " << cat << endl;
+        // cout << "2 " << word_file << endl;
     }
-    else if (argc == 4) {
-        if (strcmp(argv[3], "-p"))
-            gsPort = argv[3];
-    }
-    else if (argc > 4) {
-        if (strcmp(argv[4], "-v"))
+    for (int i = 2; i < argc; ++i) {
+        if (!strcmp(argv[i], "-p"))
+            gsPort = argv[i + 1];
+        else if (!strcmp(argv[i], "-v"))
             verbose = true;
     }
-    else
-        throw invalid_argument("Invalid number of arguments");
 
     // Open sockets (#TODO put this in a function)
-    int udp_sock = create_socket();
-    int tcp_sock = create_socket("tcp");
+    udp_sock = create_socket();
+    tcp_sock = create_socket("tcp");
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -79,16 +80,18 @@ int main(int argc, char* argv[]) {
     fd_set readfds;
     int nready;
     int newfd;
-    pid_t pid;
+    //pid_t pid;
     ssize_t n;
+    int i = 0;
 
     // Listen to sockets
     while (true) {
+        cout << "hello" << i++ << endl;
         FD_SET(udp_sock, &readfds);
         FD_SET(tcp_sock, &readfds);
 
         int max_sock = max(udp_sock, tcp_sock);
-        // select() blocks until there is data to read, sets the bytemap (readfs) to 1 for the socket which has data to read
+        /* select() blocks until there is data to read, sets the bytemap (readfs) to 1 for the socket which has data to read */
         nready = select(max_sock + 1, &readfds, NULL, NULL, NULL);
 
         // Logic for UDP requests
@@ -96,7 +99,8 @@ int main(int argc, char* argv[]) {
             n = recvfrom(udp_sock, buffer, 1024, 0, (struct sockaddr *) &address, &addrlen);
             if (n < 0)
                 throw runtime_error("Error receiving UDP message");
-            // handle_udp(buffer, n); // Handle function should fork if the user is new
+            cout << "Received UDP message: " << buffer << endl;
+            handle_command(buffer, n); // Handle function should fork if the user is new
             if (verbose) continue;
                 // TODO implement verbose
         }
@@ -108,7 +112,8 @@ int main(int argc, char* argv[]) {
             n = read(newfd, buffer, 1024);
             if (n < 0)
                 throw runtime_error("Error reading TCP message");
-            // handle_tcp(buffer, n); // TODO implement handle_tcp
+            cout << "Received TCP message: " << buffer << endl;
+            handle_command(buffer, n); // TODO implement handle_tcp
             if (verbose) continue;
                 // TODO implement verbose
             }
@@ -116,6 +121,9 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+void handle_command(char* buffer, int n) {
+    
+}
 // ==================================== Auxiliary Functions ========================================
 
 // ======================== Files ============================
