@@ -98,14 +98,12 @@ int main(int argc, char *argv[]) {
 // ==================================== Auxiliary Functions ========================================
 
 addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
-    int errcode;
     struct addrinfo hints, *server;
     int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = type;
-    errcode = getaddrinfo(gsIP.c_str(), gsPort.c_str(), &hints, &server);
-    if (errcode != 0)
+    if (getaddrinfo(gsIP.c_str(), gsPort.c_str(), &hints, &server) != 0)
         throw runtime_error("Error getting address info.");
     return server;
 }
@@ -263,7 +261,7 @@ bool is_valid_word(const string &arg) {
 string request(int sock, addrinfo *addr, string req) {
     socklen_t addrlen;
     struct sockaddr_in address;
-    char buffer[128]; // TODO: what size should this be?
+    char buffer[128];
     
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {

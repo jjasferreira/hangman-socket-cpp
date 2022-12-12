@@ -11,8 +11,8 @@
 
 all: $(TARGET)
  
-gs: gs.cpp
-	$(CC) $(CFLAGS) -o gs gs.cpp
+gs: GS/gs.cpp
+	$(CC) $(CFLAGS) -o gs GS/gs.cpp
 
 player: player.cpp
 	$(CC) $(CFLAGS) -o player player.cpp
