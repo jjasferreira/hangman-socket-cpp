@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     struct addrinfo hints, *res;
     socklen_t addrlen;
     struct sockaddr_in address;
-    char buffer[1024]; //copilot set this to 1024
+    char buffer[1024];
 
     cout << "argc: " << argc << endl;
 
@@ -137,7 +137,7 @@ void handle_request(char* buffer, int n, bool verbose) {
 
     // Check if the player's ID already has a process associated with it
     auto it = client_process_map.find(plid);
-    if (it = client_process_map.end()) {
+    if (it == client_process_map.end()) {
         // If not, fork a new process
         pid_t pid = fork();
         if (pid < 0)
