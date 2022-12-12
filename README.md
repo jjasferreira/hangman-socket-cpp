@@ -69,7 +69,7 @@
 
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
 
-- fork() on the server, we have to delete the child proccesses after they are done (SIGPIPE KILL CHILD)
+- fork() on the server, we have to delete the child processes after they are done (SIGPIPE KILL CHILD)
 
 - Specifying which type of error is occuring when it comes to transporting data might be good
 
