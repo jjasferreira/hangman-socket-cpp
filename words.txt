@@ -1,6 +1,6 @@
-cauliflower vegetable
-pomegranate fruit
-mercedes-benz brand
-schopenhauer philosopher
-madonna singer
-schwarzenegger actor
+cauliflower vegetable.jpg
+pomegranate fruit.jpg
+mercedes-benz brand.jpg
+schopenhauer philosopher.jpg
+madonna singer.jpg
+schwarzenegger actor.jpg

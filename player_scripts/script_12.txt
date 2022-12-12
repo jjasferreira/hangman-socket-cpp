@@ -1,0 +1,34 @@
+start 100002
+play a
+state
+play b
+state
+play c
+state
+play d
+state
+play e
+state
+play f
+state
+play g
+state
+play h
+state
+play i
+state
+play j
+state
+play k
+state
+play l
+state
+play m
+state
+play n
+state
+play r
+state
+quit
+state
+exit

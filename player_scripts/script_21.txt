@@ -1,0 +1,79 @@
+start 100001
+hint
+quit
+start 100002
+hint
+quit
+start 100003
+hint
+quit
+start 100004
+hint
+quit
+start 100005
+hint
+quit
+start 100006
+hint
+quit
+start 100007
+hint
+quit
+start 100008
+hint
+quit
+start 100009
+hint
+quit
+start 100010
+hint
+quit
+start 100011
+hint
+quit
+start 100012
+hint
+quit
+start 100013
+hint
+quit
+start 100014
+hint
+quit
+start 100015
+hint
+quit
+start 100016
+hint
+quit
+start 100017
+hint
+quit
+start 100018
+hint
+quit
+start 100019
+hint
+quit
+start 100020
+hint
+quit
+start 100021
+hint
+quit
+start 100022
+hint
+quit
+start 100023
+hint
+quit
+start 100024
+hint
+quit
+start 100025
+hint
+quit
+start 100026
+hint
+quit
+exit
