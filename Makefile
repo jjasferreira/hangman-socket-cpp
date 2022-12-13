@@ -11,11 +11,11 @@
 
 all: $(TARGET)
  
-gs: GS/gs.cpp
-	$(CC) $(CFLAGS) -o gs GS/gs.cpp
+gs: server/gs.cpp
+	$(CC) $(CFLAGS) -o gs server/gs.cpp
 
 player: player.cpp
 	$(CC) $(CFLAGS) -o player player.cpp
  
 clean:
-	$(RM) $(TARGET)
+	$(RM) $(TARGET) core
