@@ -9,6 +9,7 @@
 #include <cstring>
 #include <algorithm>
 #include <stdexcept>
+#include <fstream>
 #include <cctype>
 #include <vector>
 #include <dirent.h>

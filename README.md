@@ -37,6 +37,12 @@
 
 ## doubts
 
+- How do we know that the player has won? Should we go through every line of the active game file and see if that letter is in the word using a set, and then eliminate that letter from the set or is there an alternative way (e.g. writing a line at the end of the game file with the word progress)?
+
+- Where can we/should we save the trial number on the server side?
+
+- Are we supposed to select the words fromthe word file in order as is done is Tejo or can we select them randomly?
+
 - "If there is no ongoing game for this player then status = FIN and the GS server responds with a file containing the summary of the most recently finished game for this player. Upon receiving this summary, the player displays the information and considers the current game as terminated." What game? There is no ongoing game.
 
 - When we close the app with Ctrl+C mid-game and then run the executable again, it says that there is an ongoing game when we `start` and that we have quitted it successfully when we `quit`, but why does it say that there is an ongoing game again when we `start` again. Furthermore, when we `play`, it says there is no game. What is going on? Is this a bug?
@@ -55,6 +61,8 @@
 
 ## teacher tips
 
+- Ignore SIGPIPE player (write on unavailable socket)
+
 - There is an initial fork() and the child process listens for TCP connections, while the parent process listens for UDP connections. In the parent, it is not necessary to open new processes, since in UDP there is a queue. In the child, it will be necessary to open a child process for each file transfer, which is then closed.
 
 - If there is a game in progress when the player gives the command "exit" on the keyboard, the application will ask the server to end the game in progress. All sockets must be closed and memory freed before terminating the application.
@@ -68,5 +76,3 @@
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
 
 - fork() on the server, we have to delete the child processes after they are done (SIGPIPE KILL CHILD)
-
-- Sometimes it may be needed to read() or write() multiple times to receive/send the full message - In the TCP protocol, when sending large data such as images, as the buffer size is much smaller than the file size, the file is divided into several pieces and on the other side, the client picks them up and joins them. (In the case of TCP, even when the entire message fits in the buffer, the TCP implementation may decide to split the message into several TCP segments, so we should always write and read in a cycle, checking what has already been written/read, to ensure that everything is written/read.)

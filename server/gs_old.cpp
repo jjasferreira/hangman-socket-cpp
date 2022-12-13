@@ -187,7 +187,7 @@ void handle_request(char *buffer, int n, bool verbose)
     // ==================================== Auxiliary Functions ========================================
 
     // ======================== Files ============================
-    pair<string, string> get_word(string word_file)
+    string get_word(string word_file)
     {
         string line, word, cat;
         vector<string> lines;
@@ -203,7 +203,7 @@ void handle_request(char *buffer, int n, bool verbose)
         }
         int random = rand() % numLines;
         stringstream(lines[random]) >> word >> cat;
-        return {word, cat};
+        return word + " " + cat;
     }
 
     // ======================== Game Logic ============================

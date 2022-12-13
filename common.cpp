@@ -41,7 +41,7 @@ int create_socket(string prot) {
 string request(int sock, addrinfo *addr, string req) {
     socklen_t addrlen;
     struct sockaddr_in address;
-    char buffer[128];
+    char buffer[1024];
     
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
@@ -50,7 +50,7 @@ string request(int sock, addrinfo *addr, string req) {
             throw runtime_error("Error sending UDP request message.");
         // Receive a message
         addrlen = sizeof(address);
-        if (recvfrom(sock, buffer, 128, 0, (struct sockaddr*) &address, &addrlen) == -1)
+        if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr*) &address, &addrlen) == -1)
             throw runtime_error("Error receiving UDP reply message.");
     }
     // TCP connection request
@@ -62,7 +62,7 @@ string request(int sock, addrinfo *addr, string req) {
         if (write(sock, req.c_str(), req.length()) == -1)
             throw runtime_error("Error sending TCP request message.");
         // Receive a message
-        if (read(sock, buffer, 128) == -1)
+        if (read(sock, buffer, 1024) == -1)
             throw runtime_error("Error receiving TCP reply message.");
     }
     else
@@ -87,7 +87,7 @@ string read_to_file(int sock, string mode) {
                 throw runtime_error("Error opening/creating file.");
             // Skip the file name and file size
             char *p = buffer;
-            int offset = fname.size() + fsize.size() + 2;
+            int offset = fname.length() + fsize.length() + 2;
             p += offset;
             if (fwrite(p, sizeof(char), n - offset, fd) != (n - offset)*sizeof(char))
                 throw runtime_error("Error writing to file.");

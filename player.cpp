@@ -202,7 +202,7 @@ void handle_reply_start(string rep, string arg) {
     // "NOK": The player has an ongoing game
     if (strcmp(status.c_str(), "NOK") == 0)
         cout << "There is an ongoing game for this Player." << endl << endl;
-    // "OK": The letter guess was successful
+    // "OK": The player has started a game
     else {
         ss >> numLetters >> maxErrors;
         PLID = arg; game = true;
