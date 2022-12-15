@@ -11,16 +11,16 @@ void register_player(int PLID, int udp_sock);
 string read_from_socket(int sock, addrinfo *addr);
 void write_to_socket(int sock, string rep, string prot = "udp");
 
-string handle_request(int sock, string req);
+string handle_request(string req);
 // Handle the requests from the player
-string handle_request_start(int sock, string PLID);
-string handle_request_play(int sock, string PLID, string letter, string trial);
-string handle_request_guess(int sock, string PLID, string word, string trial);
-string handle_request_scoreboard(int sock, string PLID);
-string handle_request_hint(int sock, string PLID);
-string handle_request_state(int sock, string PLID);
-string handle_request_quit(int sock, string PLID);
-string handle_request_reveal(int sock, string PLID);
+string handle_request_start(string PLID);
+string handle_request_play(string PLID, string letter, string trial);
+string handle_request_guess(string PLID, string guess, string trial);
+string handle_request_scoreboard(string PLID);
+string handle_request_hint(string PLID);
+string handle_request_state(string PLID);
+string handle_request_quit(string PLID);
+string handle_request_reveal(string PLID);
 
 string find_letter_positions(string word, char letter);
 
@@ -88,6 +88,7 @@ int main(int argc, char *argv[]) {
             write_to_socket(sock, rep);
             close(sock);
         }
+        // TODO fork wait / close
     }
     return 0;
 }
@@ -132,12 +133,6 @@ string read_from_socket(int sock, addrinfo *addr) {
             else
                 cout << "[" << host << ":" << service << "] : " << buffer << endl << endl;
         }
-        /*
-        string ip;
-        inet_ntop(AF_INET, &address.sin_addr, ip, sizeof(ip));
-        int port = ntohs(address.sin_port);
-        cout << Received UDP message from  << ipstr << : << port << endl;
-        */
     }
     return buffer;
 }
@@ -155,41 +150,41 @@ void write_to_socket(int sock, string rep, string prot) {
     }
 }
 
-string handle_request(int sock, string req) {
+string handle_request(string req) {
     string rep, comm, PLID;
     stringstream ss(req);
     ss >> comm;
     // Start
     if (comm == "SNG") {
         ss >> PLID;
-        rep = handle_request_start(sock, PLID);
+        rep = handle_request_start(PLID);
     }
     // Play
     else if (comm == "PLG") {
         string letter, trial;
         ss >> PLID >> letter >> trial;
-        rep = handle_request_play(sock, PLID, letter, trial);
+        rep = handle_request_play(PLID, letter, trial);
     }
     // Guess
     else if (comm == "PWG") {
         string word, trial;
         ss >> PLID >> word >> trial;
-        // rep = handle_request_guess(sock, PLID, word, trial);
+        rep = handle_request_guess(PLID, word, trial);
     }
     // Quit/Exit
     else if (comm == "QUT") {
         ss >> PLID;
-        // rep = handle_request_quit(sock, PLID);
+        // rep = handle_request_quit(PLID);
     }
     // Reveal
     else if (comm == "REV") {
         ss >> PLID;
-        // rep = handle_request_reveal(sock, PLID);
+        // rep = handle_request_reveal(PLID);
     }
     return rep;
 }
 
-string handle_request_start(int sock, string PLID) {
+string handle_request_start(string PLID) {
     string rep = "RSG";
     // "NOK": The player has an ongoing game
     if (find_active_game(PLID) != "")
@@ -197,46 +192,102 @@ string handle_request_start(int sock, string PLID) {
     // "OK": The player can start a new game
     else
         rep += " OK " + create_game_file(PLID);
-    // if verbose is true, output to stdout a short description of the received request (PLID, type of request) and the IP and port originating those requests.
-    if (verbose)
-        cout << "Received request from " << PLID << " to start a new game." << endl;
-
     return rep;
 }
 
-string handle_request_play(int sock, string PLID, string letter, string trial) {
+string handle_request_play(string PLID, string letter, string trial) {
     string rep = "RLG";
+    string fname = find_active_game(PLID);
+    set<char> letters;
+
+    // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
+    if (!is_valid_plid(PLID) || !is_valid_letter(letter) || !is_valid_integer(trial) || fname == "")
+        return rep + " ERR";
+
+    // Open player game file, get the word and find the positions of the letter
+    fstream file;
+    string line, word, pos;
+    file.open(fname);
+    getline(file, line);
+    stringstream(line) >> word;
+    
+    // Set the set of letters
+    int numLetters = word.length();
+    int maxErrors = calculate_max_errors(numLetters);
+    for (int i = 0; i < numLetters; i++)
+        letters.insert(word[i]);
+    pos = find_letter_positions(word, letter[0]);
+
+    // Check if the Player has already played this letter
+    string cd, pl;
+    int tr = 0;
+    while (getline(file, line)) {
+        tr++;
+        stringstream(line) >> cd >> pl;
+        if (cd == "T") {
+            letters.erase(cd[0]);
+            // "DUP": The played letter was sent in a previous trial
+            if (pl == letter && tr != stoi(trial))
+                return rep + " DUP ";
+        }
+    }
+    if (tr != stoi(trial) - 1) {
+        return rep + " INV " + trial;
+    }
+    if (letters.size() == 0) {
+        return rep + " WIN " + trial;
+    }
+    else if (tr == maxErrors) {
+        return rep + " OVR " + trial;
+    }
+    else {
+        rep += " OK " + trial + " " + pos;
+        // write to file
+        file << "T " << letter;
+        file.close();
+        return rep;
+    }
+}
+
+string handle_request_guess(string PLID, string guess, string trial) {
+    string rep = "RWG";
     string fname = find_active_game(PLID);
 
     // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
-    if (!is_valid_plid(PLID) || fname == "") // TODO: how check if syntax is correct?
-        rep += " ERR";
-    // TODO: "OK, WIN, DUP, NOK, OVR, INV"
+    if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || fname == "")
+        return rep + " ERR ";
 
     // Open player game file, get the word and find the positions of the letter
-    ifstream file;
-    string line, word, numPos;
+    fstream file;
+    string line, word, pos;
+    int tr = 0;
     file.open(fname);
     getline(file, line);
-    stringstream ss(line);
-    ss >> word;
-    numPos = find_letter_positions(word, letter[0]);
+    stringstream(line) >> word;
 
-    // Check if the player has already played this letter
-    string cd, pl, tr;
+    int maxErrors = calculate_max_errors(word.length());
+
     while (getline(file, line)) {
-        stringstream(line) >> cd >> pl >> tr;
-        // "DUP": The played letter was sent in a previous trial
-        if (cd == "T" && pl == letter && tr != trial)
-            rep += " DUP ";
+        tr++;
     }
-    // Add the last trial number to the reply message
-    rep += tr;
-
+    
+    if (tr != stoi(trial) - 1) {
+        return rep + " INV " + trial;
+    }
+    if (guess == word) {
+            rep += " WIN " + trial;
+    } else if (tr == maxErrors) {
+        return rep + " OVR " + trial;
+    } else {
+        return rep + " NOK " + trial;
+    }
+    // write to file
+    file << "G " << guess;
     file.close();
     return rep;
 }
 
+// TODO place somewhere nicer
 string find_letter_positions(string word, char letter) {
     string pos;
     int len = word.length();
@@ -248,6 +299,17 @@ string find_letter_positions(string word, char letter) {
 }
 
 // ============================================ Filesystem ===============================================
+
+int calculate_max_errors(int len) {
+    int res;
+    if (len <= 6)
+        res = 7;
+    else if (len <= 10)
+        res = 8;
+    else
+        res = 9;
+    return res;
+}
 
 string create_game_file(string PLID) {
     ofstream file;
@@ -265,12 +327,7 @@ string create_game_file(string PLID) {
     // Set the number of maximum errors for the selected word
     stringstream(info) >> word >> hint;
     numLetters = word.length();
-    if (numLetters <= 6)
-        maxErrors = 7;
-    else if (numLetters <= 10)
-        maxErrors = 8;
-    else
-        maxErrors = 9;
+    maxErrors = calculate_max_errors(numLetters);
     return to_string(numLetters) + " " + to_string(maxErrors);
 }
 

@@ -16,6 +16,10 @@ bool is_valid_word(const string &arg) {
     return all_of(arg.begin(), arg.end(), ::isalpha) && (arg.length() > 0);
 }
 
+bool is_valid_integer(const string &arg) {
+    return all_of(arg.begin(), arg.end(), ::isdigit) && (arg.length() > 0);
+}
+
 addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     struct addrinfo hints, *server;
     char *IP = (char *) gsIP.c_str();
