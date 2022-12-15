@@ -60,8 +60,8 @@ int main(int argc, char *argv[]) {
         handle_command(comm, arg);
     }
     // Forget the game server addresses and return
-    freeaddrinfo(addrUDP);
-    freeaddrinfo(addrTCP);
+    delete addrUDP;
+    delete addrTCP;
     return 0;
 }
 
@@ -174,6 +174,8 @@ void handle_command(string comm, string arg) {
         rep = request(sock, addrUDP, req);
         close(sock);
         handle_reply_quit(rep, arg);
+        delete addrUDP;
+        delete addrTCP;
         cout << "Exiting..." << endl << endl;
         exit(0);
     }
@@ -227,9 +229,9 @@ void handle_reply_play(string rep, string arg) {
     ss >> numTrials;
         // "OK": The letter guess was successful
         if (strcmp(status.c_str(), "OK") == 0) {
-            int n, pos;
-            ss >> n;
-            for (int i = 0; i < n; i++) {
+            int numPos, pos;
+            ss >> numPos;
+            for (int i = 0; i < numPos; i++) {
                 ss >> pos;
                 wordProgress[pos - 1] = arg[0];
             }

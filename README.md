@@ -4,34 +4,20 @@
 
 **udp**:
 
-- _start/sg_
-  - [x] player (SNG)
-  - [ ] gs (RSG)
-- _play/pl_
-  - [x] player (PLG)
-  - [ ] gs (RLG)
-- _guess/gw_
-  - [x] player (PWG)
-  - [ ] gs (RWG)
-- _quit_
-  - [x] player (QUT)
-  - [ ] gs (RQT)
-- _rev_
-  - [x] player (REV) (change to return OK instead of word)
-  - [ ] gs (RRV)
-- [x] _exit_
+- _start/sg_: [ ] RSG
+- _play/pl_: [ ] RLG
+- _guess/gw_: [ ] RWG
+- _quit_: [ ] RQT
+- _rev_: [ ] RRV (change to return OK instead of word, also see REV)
+- _exit_: [ ] (release memory?)
 
 **tcp**:
 
-- _scoreboard/sb_
-  - [x] player (GSB)
-  - [ ] gs (RSB)
-- _hint/h_
-  - [x] player (GHL)
-  - [ ] gs (RHL)
-- _state/st_
-  - [x] player (STA)
-  - [ ] gs (RST)
+- _scoreboard/sb_: [ ] RSB
+- _hint/h_: [ ] RHL
+- _state/st_: [ ] RST
+
+- docstrings for functions so that when the teacher hover them, they see the description
 
 ---
 

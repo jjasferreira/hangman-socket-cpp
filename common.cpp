@@ -18,15 +18,19 @@ bool is_valid_word(const string &arg) {
 
 addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     struct addrinfo hints, *server;
+    char *IP = (char *) gsIP.c_str();
     int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = type;
     // Server IP is "self" if it is a server
-    if (gsIP == "self")
+    if (gsIP == "self") {
         hints.ai_flags = AI_PASSIVE;
-    if (getaddrinfo(gsIP.c_str(), gsPort.c_str(), &hints, &server) != 0)
+        IP = NULL;
+    }
+    if (getaddrinfo(IP, gsPort.c_str(), &hints, &server) != 0)
         throw runtime_error("Error getting address info.");
+    delete IP;
     return server;
 }
 
@@ -39,7 +43,6 @@ int create_socket(string prot) {
 }
 
 string request(int sock, addrinfo *addr, string req) {
-    socklen_t addrlen;
     struct sockaddr_in address;
     char buffer[1024];
     
@@ -49,7 +52,7 @@ string request(int sock, addrinfo *addr, string req) {
         if (sendto(sock, req.c_str(), req.length(), 0, addr->ai_addr, addr->ai_addrlen) == -1)
             throw runtime_error("Error sending UDP request message.");
         // Receive a message
-        addrlen = sizeof(address);
+        socklen_t addrlen = sizeof(address);
         if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr*) &address, &addrlen) == -1)
             throw runtime_error("Error receiving UDP reply message.");
     }
@@ -103,5 +106,6 @@ string read_to_file(int sock, string mode) {
             throw runtime_error("Error writing to file.");
     }
     fclose(fd);
+    delete fd;
     return fname + " " + fsize;
 }
