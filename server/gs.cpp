@@ -4,14 +4,15 @@
 
 struct addrinfo *addrUDP, *addrTCP; // addrinfo structs for UDP and TCP connections
 bool verbose = false;
-string words_file;
+string words_file_name;
+ifstream words_file;
 
 void register_player(int PLID, int udp_sock);
 
 string read_from_socket(int sock, addrinfo *addr);
 void write_to_socket(int sock, string rep, string prot = "udp");
 
-string handle_request(string req);
+string handle_request_udp(string req);
 // Handle the requests from the player
 string handle_request_start(string PLID);
 string handle_request_play(string PLID, string letter, string trial);
@@ -22,9 +23,12 @@ string handle_request_state(string PLID);
 string handle_request_quit(string PLID);
 string handle_request_reveal(string PLID);
 
+bool has_no_moves(string filename);
 void move_to_past_games(string PLID, string status);
 string find_letter_positions(string word, char letter);
 int calculate_max_errors(int len);
+
+void signal_handler(int signum);
 
 // ============================================ Filesystem ===============================================
 
@@ -39,7 +43,7 @@ struct scorelist {
 };
 
 string create_game_file(string PLID);
-string get_random_word(string words_file);
+string get_word();
 string find_active_game(string PLID);
 string find_last_game(string PLID);
 scorelist* find_top_scores();
@@ -52,11 +56,17 @@ int main(int argc, char *argv[]) {
     string gsIP = "localhost";
     string gsPort = to_string(58000 + GN);
 
-    // Determine the words file and overwrite the Port (words_file [-p gsPort] [-v])
+    // Define signal handler TODO: is this needed? ATM only closes the words file
+    if (signal(SIGINT, signal_handler) == SIG_ERR)
+        throw runtime_error("Error defining signal handler");
+
+    // Determine the words file name and overwrite the Port (words_file [-p gsPort] [-v])
     if (argc < 1) // Exception
         throw invalid_argument("No words file specified");
-    else
-        words_file = argv[1];
+    else {
+        words_file_name = argv[1];
+        words_file.open(words_file_name);
+    }
     for (int i = 2; i < argc; ++i) {
         if (!strcmp(argv[i], "-p"))
             gsPort = argv[i + 1];
@@ -70,7 +80,7 @@ int main(int argc, char *argv[]) {
 
     // Fork a new process
     pid_t pid = fork();
-    // Create child process to listen to TCP connections
+    // Child process listens to TCP connections
     if (pid == 0) {
         while (true) {
             /*
@@ -85,12 +95,15 @@ int main(int argc, char *argv[]) {
     else {
         while (true) {
             int sock = create_socket();
+            cout << "debug5" << endl;
             string req = read_from_socket(sock, addrUDP);
-            string rep = handle_request(req);
+            cout << "debug2" << endl;
+            string rep = handle_request_udp(req);
+            cout << "debug3 " << rep << endl;
             write_to_socket(sock, rep);
+            cout << "debug4" << endl;
             close(sock);
         }
-        // TODO fork wait / close
     }
     return 0;
 }
@@ -128,20 +141,23 @@ string read_from_socket(int sock, addrinfo *addr) {
         if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr *) &addrPlayer, &addrlen) < 0)
             throw runtime_error("Error reading from UDP socket");
         // Print the IP address and port of the player
+        cout << "debug1" << endl;
         if (verbose) {
             char host[NI_MAXHOST], service[NI_MAXSERV];
             if (getnameinfo((struct sockaddr *) &addrPlayer, addrlen, host, sizeof(host), service, sizeof(service), 0) != 0)
-                cout << "Error getting the IP address and port of a Player." << endl << endl;
+                cout << "Error getting the IP address and port of a Player." << endl; // TODO why are there two endl's?
             else
-                cout << "[" << host << ":" << service << "] : " << buffer << endl << endl;
+                cout << "[" << host << ":" << service << "] : " << buffer << endl;
         }
     }
+    cout << "debug7 " << buffer << endl;
     return buffer;
 }
 
 void write_to_socket(int sock, string rep, string prot) {
     // UDP
     if (prot == "udp") {
+        cout << "debug6" << endl;
         if (sendto(sock, rep.c_str(), rep.length(), 0, addrUDP->ai_addr, addrUDP->ai_addrlen) == -1)
             throw runtime_error("Error sending UDP reply message.");
     }
@@ -152,7 +168,7 @@ void write_to_socket(int sock, string rep, string prot) {
     }
 }
 
-string handle_request(string req) {
+string handle_request_udp(string req) {
     string rep, comm, PLID;
     stringstream ss(req);
     ss >> comm;
@@ -187,10 +203,11 @@ string handle_request(string req) {
 }
 
 string handle_request_start(string PLID) {
-    string rep = "RSG";
+    string rep = "RSG", filename;
+    filename = find_active_game(PLID);
     // "NOK": The player has an ongoing game
-    if (find_active_game(PLID) != "")
-        rep += " NOK"; // TODO: If file exists but has no moves, then rep = OK
+    if (filename != "" && !has_no_moves(filename)) // if a file exists and it has moves
+        rep += " NOK";
     // "OK": The player can start a new game
     else
         rep += " OK " + create_game_file(PLID);
@@ -227,17 +244,17 @@ string handle_request_play(string PLID, string letter, string trial) {
         tr++;
         stringstream(line) >> cd >> pl;
         if (cd == "T") {
-            letters.erase(cd[0]);
             // "DUP": The played letter was sent in a previous trial
             if (pl == letter && tr != stoi(trial))
                 return rep + " DUP ";
+            letters.erase(pl[0]);
         }
     }
     if (tr != stoi(trial) - 1) {
         return rep + " INV " + trial;
     }
     if (letters.size() == 0) {
-        move_to_past_games(PLID, "win"); // TODO: implement
+        move_to_past_games(PLID, "win");
         return rep + " WIN " + trial;
     }
     else if (tr == maxErrors) {
@@ -296,7 +313,7 @@ string handle_request_guess(string PLID, string guess, string trial) {
         else
             rep += "NOK " + trial;
         // Write to game file
-        file << "G " << guess;
+        file << "G " << guess << endl;
         file.close();
     }
     return rep + "\n";
@@ -325,7 +342,6 @@ string handle_request_reveal(string PLID) {
         rep += "ERR";
     // "word": The game was successfully terminated
     else {
-        move_to_past_games(PLID, "quit");
         fstream file;
         string line, word;
         file.open(fname);
@@ -333,22 +349,19 @@ string handle_request_reveal(string PLID) {
         stringstream(line) >> word;
         file.close();
         rep += word;
+        move_to_past_games(PLID, "quit");
     }
     return rep + "\n";
 }
 
-// TODO place somewhere nicer
-string find_letter_positions(string word, char letter) {
-    string pos;
-    int len = word.length();
-    for (int i = 0; i < len; i++) {
-        if (word[i] == letter)
-            pos += to_string(i + 1) + " ";
-    }
-    return pos;
-}
-
 // ============================================ Filesystem ===============================================
+
+bool has_no_moves(string filename) {
+    // Check if the file only has one line
+    ifstream file(filename);
+    string line;
+    return file.good() && std::getline(file, line) && file.eof();
+}
 
 void move_to_past_games(string PLID, string status) {
     string fname = find_active_game(PLID), date;
@@ -382,16 +395,21 @@ int calculate_max_errors(int len) {
 }
 
 string create_game_file(string PLID) {
-    ofstream file;
+    fstream file;
     string info, word, hint, fname = "games/GAME_" + PLID + ".txt";
     int numLetters, maxErrors;
-    // TODO: is this working or should we use fopen, fwrite?
     // TODO: add exception (could not open file)
 
     // Choose word and write it and its hint file to the game file
-    info = get_random_word(words_file);
     file.open(fname);
-    file << info;
+
+    if (has_no_moves(fname)) // if it exists and has no moves, we get the info from the file
+        getline(file, info);
+    else {
+        info = get_word();
+        file << info;
+    }
+    
     file.close();
 
     // Set the number of maximum errors for the selected word
@@ -401,8 +419,16 @@ string create_game_file(string PLID) {
     return to_string(numLetters) + " " + to_string(maxErrors);
 }
 
-string get_random_word(string words_file) {
+string get_word() {
     string line, word, hint;
+    if (words_file.good()) {
+        getline(words_file, line);
+    } else {
+        words_file.close();
+        words_file.open(words_file_name);
+        getline(words_file, line);
+    }
+    /*
     vector<string> lines;
     int numLines = 0;
     srand(time(NULL));
@@ -415,7 +441,8 @@ string get_random_word(string words_file) {
         lines.push_back(line);
     }
     int random = rand() % numLines;
-    stringstream(lines[random]) >> word >> hint;
+    */
+    stringstream(line) >> word >> hint;
     return word + " " + hint;
 }
 
@@ -477,4 +504,26 @@ scorelist* find_top_scores() {
     }
     list->numScores = i;
     return list;
+}
+
+// ============================================ Auxiliary functions ======================================================
+
+string find_letter_positions(string word, char letter) {
+    string pos;
+    int len = word.length();
+    for (int i = 0; i < len; i++) {
+        if (word[i] == letter)
+            pos += to_string(i + 1) + " ";
+    }
+    return pos;
+}
+
+// ============================================ Signal handler ======================================================
+
+void signal_handler(int signum) {
+    if (signum == SIGINT) {
+        cout << "SIGINT received" << endl;
+        words_file.close();
+        exit(0);
+    }
 }

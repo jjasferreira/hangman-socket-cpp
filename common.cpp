@@ -34,7 +34,7 @@ addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     }
     if (getaddrinfo(IP, gsPort.c_str(), &hints, &server) != 0)
         throw runtime_error("Error getting address info.");
-    delete IP;
+    // delete IP;
     return server;
 }
 
@@ -74,6 +74,7 @@ string request(int sock, addrinfo *addr, string req) {
     }
     else
         throw runtime_error("Invalid socket type.");
+    cout << "debug1 " << buffer << endl;
     return buffer;
 }
 
@@ -110,6 +111,6 @@ string read_to_file(int sock, string mode) {
             throw runtime_error("Error writing to file.");
     }
     fclose(fd);
-    delete fd;
+    // delete fd;
     return fname + " " + fsize;
 }

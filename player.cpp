@@ -60,8 +60,8 @@ int main(int argc, char *argv[]) {
         handle_command(comm, arg);
     }
     // Forget the game server addresses and return
-    delete addrUDP;
-    delete addrTCP;
+    //delete addrUDP;
+    //delete addrTCP;
     return 0;
 }
 
@@ -172,10 +172,10 @@ void handle_command(string comm, string arg) {
         req = "QUT " + PLID + "\n";
         sock = create_socket();
         rep = request(sock, addrUDP, req);
-        close(sock);
+        close(sock);    
         handle_reply_quit(rep, arg);
-        delete addrUDP;
-        delete addrTCP;
+        //delete addrUDP;
+        //delete addrTCP;
         cout << "Exiting..." << endl << endl;
         exit(0);
     }
