@@ -18,16 +18,13 @@
 - _state/st_: [ ] RST
 
 - docstrings for functions so that when the teacher hover them, they see the description
+- RCOMP command for debugging?
 
 ---
 
 ## doubts
 
-- How do we know that the player has won? Should we go through every line of the active game file and see if that letter is in the word using a set, and then eliminate that letter from the set or is there an alternative way (e.g. writing a line at the end of the game file with the word progress)?
-
-- Where can we/should we save the trial number on the server side?
-
-- Are we supposed to select the words fromthe word file in order as is done is Tejo or can we select them randomly?
+- Are we supposed to select the words from the word file in order as is done is Tejo or can we select them randomly?
 
 - "If there is no ongoing game for this player then status = FIN and the GS server responds with a file containing the summary of the most recently finished game for this player. Upon receiving this summary, the player displays the information and considers the current game as terminated." What game? There is no ongoing game.
 
@@ -56,8 +53,6 @@
 - We should indicate there has been an error by printing it when the player receives just ERR
 
 - It is a good idea to detect SIGINT to terminate the game and release memory before exiting (only in C though?, how do we release memory in C++?)
-
-- During the execution of the client and the server, we have to verify that the commands are well inserted (start, play, etc) and that the messages are also well formatted (SNG XXXXXX, RSG OK … …, etc)
 
 - Implement a data reception confirmation mechanism on the UDP protocol (recvfrom is bad on itself. Teacher talked about the SELECT mechanism or having a timer: input multiplexing)
 
