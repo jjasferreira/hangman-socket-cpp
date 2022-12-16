@@ -22,7 +22,9 @@ string handle_request_state(string PLID);
 string handle_request_quit(string PLID);
 string handle_request_reveal(string PLID);
 
+void move_to_past_games(string PLID, string status);
 string find_letter_positions(string word, char letter);
+int calculate_max_errors(int len);
 
 // ============================================ Filesystem ===============================================
 
@@ -74,7 +76,7 @@ int main(int argc, char *argv[]) {
             /*
             int sock = create_socket();
             string req = read_from_socket(sock, addrTCP);
-            handle_request(sock, req);
+            handle_request(req);
             close(sock);
             */
         }
@@ -84,7 +86,7 @@ int main(int argc, char *argv[]) {
         while (true) {
             int sock = create_socket();
             string req = read_from_socket(sock, addrUDP);
-            string rep = handle_request(sock, req);
+            string rep = handle_request(req);
             write_to_socket(sock, rep);
             close(sock);
         }
@@ -174,12 +176,12 @@ string handle_request(string req) {
     // Quit/Exit
     else if (comm == "QUT") {
         ss >> PLID;
-        // rep = handle_request_quit(PLID);
+        rep = handle_request_quit(PLID);
     }
     // Reveal
     else if (comm == "REV") {
         ss >> PLID;
-        // rep = handle_request_reveal(PLID);
+        rep = handle_request_reveal(PLID);
     }
     return rep;
 }
@@ -235,9 +237,11 @@ string handle_request_play(string PLID, string letter, string trial) {
         return rep + " INV " + trial;
     }
     if (letters.size() == 0) {
+        move_to_past_games(PLID, "win"); // TODO: implement
         return rep + " WIN " + trial;
     }
     else if (tr == maxErrors) {
+        move_to_past_games(PLID, "fail");
         return rep + " OVR " + trial;
     }
     else {
@@ -250,41 +254,87 @@ string handle_request_play(string PLID, string letter, string trial) {
 }
 
 string handle_request_guess(string PLID, string guess, string trial) {
-    string rep = "RWG";
+    string rep = "RWG ";
     string fname = find_active_game(PLID);
 
     // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
     if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || fname == "")
-        return rep + " ERR ";
+        rep += "ERR";
+    else {
+        // Open player game file and get the word
+        fstream file;
+        string line, word;
+        int tr = 0;
+        file.open(fname);
+        getline(file, line);
+        stringstream(line) >> word;
+        int maxErrors = calculate_max_errors(word.length());
+        
+        // Get the number of trials
+        while (getline(file, line))
+            tr++;
 
-    // Open player game file, get the word and find the positions of the letter
-    fstream file;
-    string line, word, pos;
-    int tr = 0;
-    file.open(fname);
-    getline(file, line);
-    stringstream(line) >> word;
+        // "INV": The trial number is invalid
+        if (tr != stoi(trial) - 1) {
+            cout << "trial: " << trial << " tr: " << tr << endl; // Debug
+            file.close();
+            rep + "INV " + trial;
+        }
+        // "WIN": The word guess was successful
+        if (guess == word) {
+            move_to_past_games(PLID, "win");
+            file.close();
+            rep + "WIN " + trial;
+        }
+        // "OVR": The word guess was not successful and the game is over
+        else if (tr == maxErrors) {
+            move_to_past_games(PLID, "fail");
+            file.close();
+            rep + "OVR " + trial;
+        }
+        // "NOK": The word guess was not successful
+        else
+            rep += "NOK " + trial;
+        // Write to game file
+        file << "G " << guess;
+        file.close();
+    }
+    return rep + "\n";
+}
 
-    int maxErrors = calculate_max_errors(word.length());
+string handle_request_quit(string PLID) {
+    string rep = "RQT ";
 
-    while (getline(file, line)) {
-        tr++;
+    // "ERR": The PLID is invalid or there is no ongoing game for this Player
+    if (!is_valid_plid(PLID) || find_active_game(PLID) == "")
+        rep += "ERR";
+    // "OK": The game was successfully terminated
+    else {
+        move_to_past_games(PLID, "quit");
+        rep += "OK";
     }
-    
-    if (tr != stoi(trial) - 1) {
-        return rep + " INV " + trial;
+    return rep + "\n";
+}
+
+string handle_request_reveal(string PLID) {
+    string rep = "RRV ";
+    string fname = find_active_game(PLID);
+
+    // "ERR": The PLID is invalid or there is no ongoing game for this Player
+    if (!is_valid_plid(PLID) || fname == "")
+        rep += "ERR";
+    // "word": The game was successfully terminated
+    else {
+        move_to_past_games(PLID, "quit");
+        fstream file;
+        string line, word;
+        file.open(fname);
+        getline(file, line);
+        stringstream(line) >> word;
+        file.close();
+        rep += word;
     }
-    if (guess == word) {
-            rep += " WIN " + trial;
-    } else if (tr == maxErrors) {
-        return rep + " OVR " + trial;
-    } else {
-        return rep + " NOK " + trial;
-    }
-    // write to file
-    file << "G " << guess;
-    file.close();
-    return rep;
+    return rep + "\n";
 }
 
 // TODO place somewhere nicer
@@ -299,6 +349,26 @@ string find_letter_positions(string word, char letter) {
 }
 
 // ============================================ Filesystem ===============================================
+
+void move_to_past_games(string PLID, string status) {
+    string fname = find_active_game(PLID), date;
+    if (fname == "")
+        throw "No active game found for this PLID";
+
+    map<string, string> status_codes = { {"win", "W"}, {"fail", "F"}, {"quit", "Q"} };
+    string mkdir_command = "mkdir -p " + PLID, mv_command = "mv ";
+    
+    time_t t = time(0);
+    tm* now = localtime(&t);
+    date = to_string(now->tm_year + 1900) + to_string(now->tm_mon + 1) + 
+    to_string(now->tm_mday) + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
+    
+    mv_command += fname + " " + PLID + "/" + date + "_" + status_codes[status] + ".txt";
+    
+    system(mkdir_command.c_str());
+    system(mv_command.c_str());
+    return;
+}
 
 int calculate_max_errors(int len) {
     int res;

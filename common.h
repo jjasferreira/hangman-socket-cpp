@@ -13,6 +13,8 @@
 #include <cctype>
 #include <vector>
 #include <set>
+#include <map>
+#include <stdlib.h>
 #include <dirent.h>
 
 using namespace std;
@@ -24,6 +26,7 @@ bool is_valid_port(const string &arg);      // digits only and is between 1024 a
 bool is_valid_plid(const string &arg);      // digits only and is of length 6
 bool is_valid_letter(const string &arg);    // letters only and is of length 1
 bool is_valid_word(const string &arg);      // letters only and is of length 1 or more
+bool is_valid_integer(const string &arg);    // digits only and is of length 1 or more
 
 // Get the IP address of the given game server
 addrinfo* get_server_address(string gsIP, string gsPort, string prot = "udp");
