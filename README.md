@@ -22,13 +22,15 @@
 
 ---
 
+- se player receber invalid trial number o ctrl c deixa de funcionar
+
 ## doubts
 
 - [ASKED] Should we use setsockopt() to have a timer in the reception of data from the server? Yes, in the player, have timers in UDP sockets. In the player side, we should have a timer to close TCP sockets after they've sent everything >> kill child process >> wait in parent process >> exit server
 
 - [ASKED] Originally, the RRV reply message could have status (OK, ERR) or present the word. But now it says it only sends the word back or no reply message at all. "No reply means that there is no ongoing game". How do we deal with this? With timers?
 
-- Are we supposed to select the words from the word file in order as is done is Tejo or can we select them randomly?
+- How do we not print garbage when in verbose mode in the server? How can we not send garbage?
 
 - "If there is no ongoing game for this player then status = FIN and the GS server responds with a file containing the summary of the most recently finished game for this player. Upon receiving this summary, the player displays the information and considers the current game as terminated." What game? There is no ongoing game.
 

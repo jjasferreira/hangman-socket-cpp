@@ -8,10 +8,11 @@ string words_file_name;
 ifstream words_file;
 string progName;
 
+void dummy();
 void register_player(int PLID, int udp_sock);
 
-string read_from_socket(int sock, addrinfo *addr);
-void write_to_socket(int sock, addrinfo *addr, string rep);
+string read_from_socket(int sock, addrinfo *addr, struct sockaddr_in *addrPlayer);
+void write_to_socket(int sock, struct sockaddr_in addrPlayer, addrinfo *addr, string rep);
 
 string handle_request_udp(string req);
 // Handle the requests from the player
@@ -100,14 +101,12 @@ int main(int argc, char *argv[]) {
     // Parent process listens to UDP connections
     else {
         while (true) {
+            struct sockaddr_in addrPlayer, addrTemp;
+            addrTemp = addrPlayer;
             int sock = create_socket(addrUDP, progName);
-            cout << "debug5: " << endl; // TODO: rm line
-            string req = read_from_socket(sock, addrUDP);
-            cout << "debug2: " << endl; // TODO: rm line
+            string req = read_from_socket(sock, addrUDP, &addrPlayer);
             string rep = handle_request_udp(req);
-            cout << "debug3: " << rep << endl;  // TODO: rm line
-            write_to_socket(sock, addrUDP, rep);
-            cout << "debug4: " << endl; // TODO: rm line
+            write_to_socket(sock, addrPlayer, addrUDP, rep);
             close(sock);
         }
     }
@@ -116,22 +115,21 @@ int main(int argc, char *argv[]) {
 
 // ==================================== Auxiliary Functions ========================================
 
-string read_from_socket(int sock, addrinfo *addr) {
-    struct sockaddr_in addrPlayer;
-    socklen_t addrlen = sizeof(addrPlayer);
+string read_from_socket(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) {
+    socklen_t addrlen = sizeof(*addrPlayer);
     char buffer[1024];
 
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
         if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding UDP socket");
-        if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr *) &addrPlayer, &addrlen) < 0)
+        if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr *) addrPlayer, &addrlen) < 0)
             throw runtime_error("Error reading from UDP socket");
         // Print the IP address and Port of the Player, if in verbose mode
         if (verbose) {
             char host[NI_MAXHOST], service[NI_MAXSERV];
-            if (getnameinfo((struct sockaddr *) &addrPlayer, addrlen, host, sizeof(host), service, sizeof(service), 0) != 0)
-                cout << "Error getting the IP address and port of a Player." << endl; // TODO why are there two endl's?
+            if (getnameinfo((struct sockaddr *) addrPlayer, addrlen, host, sizeof(host), service, sizeof(service), 0) != 0)
+                cout << "Error getting the IP address and port of a Player." << endl << endl;
             else
                 cout << "[" << host << ":" << service << "] : " << buffer << endl;
         }
@@ -156,17 +154,21 @@ string read_from_socket(int sock, addrinfo *addr) {
     }
     else    // Exception
         throw runtime_error("Invalid address type.");
-    cout << "debug7: " << buffer << endl;   // TODO: rm line
+    printf("%s", buffer);   // TODO: rm line
     return buffer;
 }
 
-void write_to_socket(int sock, addrinfo *addr, string rep) {
+void write_to_socket(int sock, struct sockaddr_in addrPlayer, addrinfo *addr, string rep) {
+    // TODO: do we need addr?
     // UDP connection reply
     if (addr->ai_socktype == SOCK_DGRAM) {
-        cout << "debug6: " << endl; // TODO: rm line
-        if (sendto(sock, rep.c_str(), rep.length(), 0, addrUDP->ai_addr, addrUDP->ai_addrlen) == -1)
-            throw runtime_error("Error sending UDP reply message.");
+        socklen_t addrlen = sizeof(addrPlayer);
+        ssize_t errnumber = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrlen);
+    //     if (sendto(sock, rep.c_str(), rep.length(), 0, addrUDP->ai_addr, addrUDP->ai_addrlen) == -1)
+    //         throw runtime_error("Error sending UDP reply message.");
+    // }
     }
+
     // TCP connection reply
     else if (addr->ai_socktype == SOCK_STREAM) {
         if (write(sock, rep.c_str(), rep.length()) == -1)
@@ -221,6 +223,15 @@ string handle_request_start(string PLID) {
     if (!is_valid_plid(PLID))
         return rep + "ERR\n";
     // "NOK": The Player has an ongoing game: an active file with moves
+    if (fname != "" && has_no_moves(fname)) {
+        ifstream file(fname);
+        string line, word;
+        getline(file, line);
+        stringstream ss(line);
+        ss >> word;
+        int num_errors = calculate_max_errors(word.length());
+        return rep += "OK " + to_string(num_errors) + "\n";
+    }
     if (fname != "" && !has_no_moves(fname))  // TODO: change logic to has_moves_gfile
         return rep += "NOK\n";
     // "OK": The player can start a new game
@@ -237,12 +248,16 @@ string handle_request_play(string PLID, string letter, string trial) {
         return rep + "ERR\n";
 
     // Open player game file, get the word and find the positions of the letter
-    fstream file;
+    fstream file(fname, ios::out | ios::in);
     string line, word, pos;
-    file.open(fname);
+    //file.open(fname, ios::in | ios::app);
+    cout << file.good() << endl;
     getline(file, line);
     stringstream(line) >> word;
-    
+
+    if (word == "")
+        throw runtime_error("Error reading word from file.");
+
     // Set the set of letters
     int numLetters = word.length();
     int maxErrors = calculate_max_errors(numLetters);
@@ -259,24 +274,42 @@ string handle_request_play(string PLID, string letter, string trial) {
         if (cd == "T") {
             // "DUP": The played letter was sent in a previous trial
             if (pl == letter && tr != stoi(trial))
-                return rep + " DUP ";
+                return rep + " DUP " + to_string(stoi(trial)-1);
             letters.erase(pl[0]);
         }
     }
+    file.close();
+    // "INV": The trial number is invalid
+    cout << "trial: " << trial << "tr: " << tr << endl;
     if (tr != stoi(trial) - 1)
         return rep + " INV " + trial;
+    // "WIN": The Player has won the game
     if (letters.size() == 0) {
         move_to_past_games(PLID, "win");
         return rep + " WIN " + trial;
     }
+    // "OVR": The Player has lost the game
     else if (tr == maxErrors) {
         move_to_past_games(PLID, "fail");
         return rep + " OVR " + trial;
-    }
-    else {
+    } // check if letter is in letters
+    // "OK": The letter is in the word
+    else if (letters.find(letter[0]) != letters.end()) {
         rep += " OK " + trial + " " + pos;
         // write to file
-        file << "T " << letter;
+        file.open(fname, ios::out | ios::app);
+        dummy();
+        cout << "coiso" << file.good() << endl;
+        file << "T " << letter << endl;
+        file.close();
+        return rep;
+    }
+    // "NOK": The letter is not in the word
+    else {
+        rep += " NOK " + trial;
+        // write to file
+        file.open(fname, ios::out | ios::app);
+        file << "T " << letter << endl;
         file.close();
         return rep;
     }
@@ -305,15 +338,15 @@ string handle_request_guess(string PLID, string guess, string trial) {
         stringstream(line) >> cd >> pl;
         // "DUP": The guessed word was sent in a previous trial
         if (cd == "G" && pl == guess && tr != stoi(trial))
-            return rep += "DUP " + trial + "\n";
+            return rep += "DUP " + to_string(stoi(trial)-1) + "\n";
     }
+    file.close();
+    cout << "debug_guess trial: " << trial << "/ tr: " << tr << " max_errors: " << maxErrors << endl;    // TODO: rm line
     // "INV": The trial number is invalid
     if (tr != stoi(trial) - 1) {
         cout << "trial: " << trial << "/ tr: " << tr << endl;    // TODO: rm line
         return rep + "INV " + trial + "\n";
     }
-    file << "G " << guess << endl;
-    file.close();
     // "WIN": The word guess was successful
     if (guess == word) {
         move_to_past_games(PLID, "win");
@@ -325,7 +358,10 @@ string handle_request_guess(string PLID, string guess, string trial) {
         return rep + "OVR " + trial + "\n";
     }
     // "NOK": The word guess was not successful
-    return rep + "OVR " + trial + "\n";
+    file.open(fname, ios::out | ios::app);
+    file << "G " << guess << endl;
+    file.close();
+    return rep + "NOK " + trial + "\n";
 }
 
 string handle_request_quit(string PLID) {
@@ -401,20 +437,17 @@ int calculate_max_errors(int len) {
 }
 
 string create_game_file(string PLID) {
-    fstream file;
-    string info, word, hint, fname = "games/GAME_" + PLID + ".txt";
+    string info, word, hint, fname = "server/games/GAME_" + PLID + ".txt";
+    ofstream file(fname, ios::in | ios::out | ios::trunc);
     int numLetters, maxErrors;
     // TODO: add exception (could not open file)
 
     // Choose word and write it and its hint file to the game file
-    file.open(fname);
+    // file.open(fname, ios::out | ios::in | ios::trunc);
 
-    if (has_no_moves(fname)) // if it exists and has no moves, we get the info from the file
-        getline(file, info);
-    else {
-        info = get_word();
-        file << info;
-    }
+    cout << "create file went well?:  " << file.good() << endl;
+    info = get_word();
+    file << info << endl;
     
     file.close();
 
@@ -453,7 +486,7 @@ string get_word() {
 }
 
 string find_active_game(string PLID) {
-    string fname = "games/GAME_" + PLID + ".txt";
+    string fname = "server/games/GAME_" + PLID + ".txt";
     ifstream file(fname);
     if (!file.good())
         return "";
@@ -464,7 +497,7 @@ string find_active_game(string PLID) {
 string find_last_game(string PLID) {
     bool found;
     struct dirent **filelist;
-    string fname, dname = "games/" + PLID + "/";
+    string fname, dname = "server/games/" + PLID + "/";
     int numEntries = scandir(dname.c_str(), &filelist, 0, alphasort);
     if (numEntries <= 0)
         return "";
@@ -516,12 +549,15 @@ scorelist* find_top_scores() {
 
 string find_letter_positions(string word, char letter) {
     string pos;
+    int occ = 0;
     int len = word.length();
     for (int i = 0; i < len; i++) {
-        if (word[i] == letter)
+        if (word[i] == letter) {
             pos += to_string(i + 1) + " ";
+            occ++;
+        }
     }
-    return pos;
+    return to_string(occ) + " " + pos;
 }
 
 void handle_signal_gs(int sig) {
@@ -539,4 +575,8 @@ void handle_signal_gs(int sig) {
         cout << "Closing the server..." << endl;
         exit(0);
     }
+}
+
+void dummy() {
+    // Do nothing
 }

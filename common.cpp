@@ -34,7 +34,6 @@ addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     }
     if (getaddrinfo(IP, gsPort.c_str(), &hints, &server) != 0)
         throw runtime_error("Error getting address info.");
-    // delete IP;   // TODO: uncomment line
     return server;
 }
 
@@ -57,7 +56,7 @@ int create_socket(addrinfo *addr, string prog) {
 
 string request(int sock, addrinfo *addr, string req) {
     struct sockaddr_in address;
-    char buffer[1024];
+    char buffer[64];
     
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
@@ -66,7 +65,7 @@ string request(int sock, addrinfo *addr, string req) {
             throw runtime_error("Error sending UDP request message.");
         // Receive a message
         socklen_t addrlen = sizeof(address);
-        if (recvfrom(sock, buffer, 1024, 0, (struct sockaddr*) &address, &addrlen) == -1)
+        if (recvfrom(sock, buffer, 64, 0, (struct sockaddr*) &address, &addrlen) == -1)
             throw runtime_error("Error receiving UDP reply message.");
     }
     // TCP connection request
@@ -78,12 +77,11 @@ string request(int sock, addrinfo *addr, string req) {
         if (write(sock, req.c_str(), req.length()) == -1)
             throw runtime_error("Error sending TCP request message.");
         // Receive a message
-        if (read(sock, buffer, 1024) == -1)
+        if (read(sock, buffer, 64) == -1)
             throw runtime_error("Error receiving TCP reply message.");
     }
     else    // Exception
         throw runtime_error("Invalid address type.");
-    cout << "debug1: " << buffer;    // TODO: rm line
     return buffer;
 }
 
@@ -97,6 +95,7 @@ string read_to_file(int sock, string mode) {
     // Read from socket to the file and print to terminal
     memset(buffer, 0, 1024);
     while ((n = read(sock, buffer, 1024)) > 0) {
+        cout << buffer << endl << endl; // TODO: rm line
         if (first) {
             stringstream(buffer) >> fname >> fsize;
             // Open/create the file with write permissions
@@ -120,6 +119,5 @@ string read_to_file(int sock, string mode) {
             throw runtime_error("Error writing to file.");
     }
     fclose(fd);
-    // delete fd;   // TODO: uncomment line
     return fname + " " + fsize;
 }

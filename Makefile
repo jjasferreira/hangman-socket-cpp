@@ -15,10 +15,10 @@ all: $(TARGET)
 common.o: common.cpp
 	$(CC) -c $(CFLAGS) -o common.o common.cpp
  
-gs: server/gs.cpp
+gs: $(OBJ) server/gs.cpp
 	$(CC) $(CFLAGS) -o gs server/gs.cpp $(OBJ)
 
-player: player.cpp
+player: $(OBJ) player.cpp
 	$(CC) $(CFLAGS) -o player player.cpp $(OBJ)
  
 clean:

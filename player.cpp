@@ -22,13 +22,16 @@ void handle_reply_start(string rep, string arg);
 void handle_reply_play(string rep, string arg);
 void handle_reply_guess(string rep, string arg);
 void handle_reply_scoreboard(string rep, int sock);
-void handle_reply_hint(string rep, int sock);
+void handle_reply_hint(int sock);
 void handle_reply_state(string rep, int sock);
 void handle_reply_quit(string rep);
 void handle_reply_reveal(string rep);
 
 // Handle the signals from the terminal
 void handle_signal_player(int sig);
+
+// Sends a message through the socket
+void write_to_socket(int sock, addrinfo *addr, string rep);
 
 // ============================================ Main ===============================================
 
@@ -83,7 +86,7 @@ void print_welcome_message() {
     cout << "hint\t\tGet a hint for the word\t(alias: h)" << endl;
     cout << "quit\t\tQuit game" << endl;
     cout << "exit\t\tExit application" << endl;
-    cout << "reveal\t\tReveal the word\t\t(alias: rv)" << endl << endl;
+    cout << "reveal\t\tReveal the word\t\t(alias: rev)" << endl << endl;
 }
 
 void print_word_progress() {
@@ -107,7 +110,8 @@ void handle_command(string line) {
         if (!is_valid_plid(arg))    // Exception
             cout << "Invalid PLID." << endl << endl;
         else {
-            req = "SNG " + arg + "\n";
+            // req.clear(); // TODO: Clear the bytes of string req
+            req = "SNG " + arg + "\n" + "\0";
             sock = create_socket(addrUDP, progName);
             rep = request(sock, addrUDP, req);
             close(sock);
@@ -125,6 +129,7 @@ void handle_command(string line) {
             req = "PLG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
             sock = create_socket(addrUDP, progName);
             rep = request(sock, addrUDP, req);
+            cout << "rep: " << rep << endl;
             close(sock);
             handle_reply_play(rep, arg);
         }
@@ -148,7 +153,7 @@ void handle_command(string line) {
     else if (comm == "scoreboard" || comm == "sb") {
         req = "GSB\n";
         sock = create_socket(addrTCP, progName);
-        rep = request(sock, addrTCP, req);
+        rep = request(sock, addrUDP, req);
         handle_reply_scoreboard(rep, sock);
         close(sock);
     }
@@ -159,8 +164,8 @@ void handle_command(string line) {
         else {
             req = "GHL " + PLID + "\n";
             sock = create_socket(addrTCP, progName);
-            rep = request(sock, addrTCP, req);
-            handle_reply_hint(rep, sock);
+            write_to_socket(sock, addrTCP, req);
+            handle_reply_hint(sock);
             close(sock);
         }
     }
@@ -343,23 +348,53 @@ void handle_reply_scoreboard(string rep, int sock) {
         cout << "Undefined reply from the server: " << rep << endl << endl;
 }
 
-void handle_reply_hint(string rep, int sock) {
+void handle_reply_hint(int sock) {
     // (RHL status [Fname Fsize Fdata])
     string type, status, fname, fsize;
-    stringstream(rep) >> type >> status;
-    
-    // "NOK": There is no file to be sent
-    if (status == "NOK")
-        cout << "There is no file to be sent or there is some other problem." << endl << endl;
-    // "OK": The hint is sent as an image file
-    else if (status == "OK") {
-        string res = read_to_file(sock);
-        stringstream(res) >> fname >> fsize;
-        cout << "Saved hint to file " << fname << " (" << fsize << " bytes)." << endl;
-        print_word_progress();
+    ssize_t n;
+    FILE *fd;
+    char buffer[1024];
+    bool first = true;
+
+    // Read from socket to the file and print to terminal
+    memset(buffer, 0, 1024);
+    while ((n = read(sock, buffer, 1024)) > 0) {
+        if (first) {
+            stringstream ss(buffer);
+            ss >> type >> status;
+            // "NOK": There is no file to be sent
+            if (status == "NOK") {
+                cout << "There is no file to be sent or there is some other problem." << endl << endl;
+                return;
+            }
+            // "OK": The hint is sent as an image file
+            if (status == "OK") {
+                ss >> fname >> fsize;
+                // Open/create the file with write permissions
+                if ((fd = fopen(fname.c_str(), "a")) == NULL)
+                    throw runtime_error("Error opening/creating file.");
+                // Skip the file name and file size and write the rest to the file and to the terminal
+                char *p = buffer;
+                int offset = fname.length() + fsize.length() + 2;
+                p += offset;
+                if (fwrite(p, sizeof(char), n - offset, fd) != (n - offset)*sizeof(char))
+                    throw runtime_error("Error writing to file.");
+                first = false;
+                continue;
+            }
+            else {  // Exception
+                cout << "Undefined reply from the server: " << type << status << endl << endl;
+                return;
+            }
+        }
+        // Make sure the entire buffer is written to the file and terminal
+        fseek(fd, 0, SEEK_END);
+        if (fwrite(buffer, sizeof(char), n, fd) != n*sizeof(char))
+            throw runtime_error("Error writing to file.");
     }
-    else    // Exception
-        cout << "Undefined reply from the server: " << rep << endl << endl;
+    fclose(fd);
+    cout << "Saved hint to file " << fname << " (" << fsize << " bytes)." << endl;
+    print_word_progress();
 }
 
 void handle_reply_state(string rep, int sock) {
@@ -446,4 +481,24 @@ void handle_signal_player(int sig) {
         cout << "Exiting..." << endl << endl;
         exit(0);
     }
+}
+
+void write_to_socket(int sock, addrinfo *addr, string rep) {
+    // UDP connection request
+    if (addr->ai_socktype == SOCK_DGRAM) {
+        // Connect and send a message
+        if (sendto(sock, rep.c_str(), rep.length(), 0, addrUDP->ai_addr, addrUDP->ai_addrlen) == -1)
+            throw runtime_error("Error sending UDP request message.");
+    }
+    // TCP connection request
+    else if (addr->ai_socktype == SOCK_STREAM) {
+        // Connect to the server
+        if (connect(sock, addr->ai_addr, addr->ai_addrlen) == -1)
+            throw runtime_error("Error connecting to server.");
+        // Send a message
+        if (write(sock, rep.c_str(), rep.length()) == -1)
+            throw runtime_error("Error sending TCP request message.");
+    }
+    else    // Exception
+        throw runtime_error("Invalid address type.");
 }
