@@ -33,7 +33,7 @@ bool is_valid_integer(const string &arg);    // digits only and is of length 1 o
 addrinfo* get_server_address(string gsIP, string gsPort, string prot = "udp");
 
 // Create sockets using IPv4 and the UDP or TCP protocol
-int create_socket(string prot = "udp");
+int create_socket(addrinfo *addr, string prog = "player");
 
 // Sends a message to the server using the given socket
 string request(int sock, addrinfo *server, string req);

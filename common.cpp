@@ -34,15 +34,24 @@ addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     }
     if (getaddrinfo(IP, gsPort.c_str(), &hints, &server) != 0)
         throw runtime_error("Error getting address info.");
-    // delete IP;
+    // delete IP;   // TODO: uncomment line
     return server;
 }
 
-int create_socket(string prot) {
-    int type = (prot == "tcp") ? SOCK_STREAM : SOCK_DGRAM;
-    int sock = socket(AF_INET, type, 0);
-    if (sock == -1)
+int create_socket(addrinfo *addr, string prog) {
+    int sock = socket(AF_INET, addr->ai_socktype, 0);
+    if (sock == -1) {
+        string prot = (addr->ai_socktype == SOCK_DGRAM) ? "UDP" : "TCP";
         throw runtime_error("Error opening " + prot + " socket.");
+    }
+    // Set a timer of 5 seconds if the socket is UDP and belongs to the Player
+    if (addr->ai_socktype == SOCK_DGRAM && prog == "player") {
+        struct timeval tv;
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv)) < 0)
+            throw runtime_error("Error setting socket options");
+    }
     return sock;
 }
 
@@ -72,9 +81,9 @@ string request(int sock, addrinfo *addr, string req) {
         if (read(sock, buffer, 1024) == -1)
             throw runtime_error("Error receiving TCP reply message.");
     }
-    else
-        throw runtime_error("Invalid socket type.");
-    cout << "debug1 " << buffer << endl;
+    else    // Exception
+        throw runtime_error("Invalid address type.");
+    cout << "debug1: " << buffer;    // TODO: rm line
     return buffer;
 }
 
@@ -111,6 +120,6 @@ string read_to_file(int sock, string mode) {
             throw runtime_error("Error writing to file.");
     }
     fclose(fd);
-    // delete fd;
+    // delete fd;   // TODO: uncomment line
     return fname + " " + fsize;
 }
