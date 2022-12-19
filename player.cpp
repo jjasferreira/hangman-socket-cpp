@@ -3,9 +3,10 @@
 // ======================================== Declarations ===========================================
 
 string progName;                    // Program name
-struct addrinfo *addrUDP, *addrTCP; // addrinfo structs for UDP and TCP connections
+struct addrinfo *addrUDP, *addrTCP; // Addrinfo structs for UDP and TCP connections
 string PLID;                        // Player ID
 bool game = false;                  // Game status
+bool id = false;                    // Id status
 vector<char> wordProgress;          // Current state of the word
 int numLetters, maxErrors;          // Number of trials, number of letters in the word
 int numErrors, numTrials;           // Max number of errors allowed, number of errors made
@@ -17,21 +18,18 @@ void print_word_progress();
 // Function that operates the commands
 void handle_command(string line);
 
-// Handle the responses from the game server
+// Handle the different responses from the game server
 void handle_reply_start(string rep, string arg);
 void handle_reply_play(string rep, string arg);
 void handle_reply_guess(string rep, string arg);
-void handle_reply_scoreboard(string rep, int sock);
+void handle_reply_scoreboard(int sock);
 void handle_reply_hint(int sock);
-void handle_reply_state(string rep, int sock);
+void handle_reply_state(int sock);
 void handle_reply_quit(string rep);
 void handle_reply_reveal(string rep);
 
 // Handle the signals from the terminal
 void handle_signal_player(int sig);
-
-// Sends a message through the socket
-void write_to_socket(int sock, addrinfo *addr, string rep);
 
 // ============================================ Main ===============================================
 
@@ -90,12 +88,14 @@ void print_welcome_message() {
 }
 
 void print_word_progress() {
-    string res = "Word progress: ";
-    for (char i: wordProgress)
-        res += string(1, i) + " ";
-    cout << endl << res << endl;
-    cout << "Current trial: " << numTrials << endl;
-    cout << "Number of errors: " << numErrors << "/" << maxErrors << endl << endl;
+    if (game) {
+        string res = "Word progress: ";
+        for (char i: wordProgress)
+            res += string(1, i) + " ";
+        cout << endl << res << endl;
+        cout << "Current trial: " << numTrials << endl;
+        cout << "Number of errors: " << numErrors << "/" << maxErrors << endl << endl;
+    }
 }
 
 void handle_command(string line) {
@@ -110,10 +110,10 @@ void handle_command(string line) {
         if (!is_valid_plid(arg))    // Exception
             cout << "Invalid PLID." << endl << endl;
         else {
-            // req.clear(); // TODO: Clear the bytes of string req
             req = "SNG " + arg + "\n" + "\0";
             sock = create_socket(addrUDP, progName);
-            rep = request(sock, addrUDP, req);
+            write_to_socket(sock, addrUDP, req);
+            rep = read_from_socket(sock);
             close(sock);
             handle_reply_start(rep, arg);
         }
@@ -128,8 +128,8 @@ void handle_command(string line) {
         else {
             req = "PLG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
             sock = create_socket(addrUDP, progName);
-            rep = request(sock, addrUDP, req);
-            cout << "rep: " << rep << endl;
+            write_to_socket(sock, addrUDP, req);
+            rep = read_from_socket(sock);
             close(sock);
             handle_reply_play(rep, arg);
         }
@@ -144,7 +144,8 @@ void handle_command(string line) {
         else {
             req = "PWG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
             sock = create_socket(addrUDP, progName);
-            rep = request(sock, addrUDP, req);
+            write_to_socket(sock, addrUDP, req);
+            rep = read_from_socket(sock);
             close(sock);
             handle_reply_guess(rep, arg);
         }
@@ -153,8 +154,8 @@ void handle_command(string line) {
     else if (comm == "scoreboard" || comm == "sb") {
         req = "GSB\n";
         sock = create_socket(addrTCP, progName);
-        rep = request(sock, addrUDP, req);
-        handle_reply_scoreboard(rep, sock);
+        write_to_socket(sock, addrTCP, req);
+        handle_reply_scoreboard(sock);
         close(sock);
     }
     // Hint
@@ -171,17 +172,22 @@ void handle_command(string line) {
     }
     // State
     else if (comm == "state" || comm == "st") {
-        req = "STA " + PLID + "\n";
-        sock = create_socket(addrTCP, progName);
-        rep = request(sock, addrTCP, req);
-        handle_reply_state(rep, sock);
-        close(sock);
+        if (!id)  // Exception
+            cout << "The PLID is still unknown to the server." << endl << endl;
+        else {
+            req = "STA " + PLID + "\n";
+            sock = create_socket(addrTCP, progName);
+            write_to_socket(sock, addrTCP, req);
+            handle_reply_state(sock);
+            close(sock);
+        }
     }
     // Quit
     else if (comm == "quit") {
         req = "QUT " + PLID + "\n";
         sock = create_socket(addrUDP, progName);
-        rep = request(sock, addrUDP, req);
+        write_to_socket(sock, addrUDP, req);
+        rep = read_from_socket(sock);
         close(sock);
         handle_reply_quit(rep);
     }
@@ -195,7 +201,8 @@ void handle_command(string line) {
         else {
             req = "REV " + PLID + "\n";
             sock = create_socket(addrUDP, progName);
-            rep = request(sock, addrUDP, req);
+            write_to_socket(sock, addrUDP, req);
+            rep = read_from_socket(sock);
             close(sock);
             handle_reply_reveal(rep);
         }
@@ -214,10 +221,13 @@ void handle_reply_start(string rep, string arg) {
     if (status == "ERR")
         cout << "The PLID or the syntax of the request was invalid." << endl << endl;
     // "NOK": The player has an ongoing game
-    else if (status == "NOK")
+    else if (status == "NOK") {
+        id = true;
         cout << "There is an ongoing game for this Player." << endl << endl;
+    }
     // "OK": The player has started a game
     else if (status == "OK") {
+        id = true;
         ss >> numLetters >> maxErrors;
         PLID = arg; game = true;
         wordProgress.assign(numLetters, '_');
@@ -254,13 +264,13 @@ void handle_reply_play(string rep, string arg) {
         }
         // "WIN": The letter guess completes the word
         else if (status == "WIN") {
-            game = false;
             for (int i = 0; i < numLetters; i++) {
                 if (wordProgress[i] == '_')
                     wordProgress[i] = arg[0];
             }
             cout << "You won!" << endl;
             print_word_progress();
+            game = false;
         }
         // "DUP": The letter guess was already made
         else if (status == "DUP") {
@@ -300,11 +310,11 @@ void handle_reply_guess(string rep, string arg) {
     ss >> numTrials;
         // "WIN": The word guess was successful
         if (status == "WIN") {
-            game = false;
             for (int i = 0; i < numLetters; i++)
                 wordProgress[i] = arg[i];
             cout << "You won!" << endl;
             print_word_progress();
+            game = false;
         }
         // "DUP": The word guess was already made
         else if (status == "DUP") {
@@ -319,7 +329,8 @@ void handle_reply_guess(string rep, string arg) {
         }
         // "OVR": The word guess was not successful and the game is over
         else if (status == "OVR") {
-            numErrors++; game = false;
+            numErrors++;
+            game = false;
             cout << "You lost!" << endl;
         }
         // "INV": The trial number is invalid
@@ -330,84 +341,90 @@ void handle_reply_guess(string rep, string arg) {
     }
 }
 
-void handle_reply_scoreboard(string rep, int sock) {
+void handle_reply_scoreboard(int sock) {
     // (RSB status [Fname Fsize Fdata])
     string type, status, fname, fsize;
-    stringstream(rep) >> type >> status;
-    
+    ssize_t n; char c;
+
+    // Get the type of message received
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        type += c;
+    if (type != "RSB") {    // Exception
+        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        return;
+    }
+    // Get the status
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        status += c;
     // "EMPTY": The scoreboard is empty
     if (status == "EMPTY")
         cout << "The scoreboard is still empty. No game was yet won by any player." << endl << endl;
     // "OK": The scoreboard is not empty
     else if (status == "OK") {
         string res = read_to_file(sock, "print");
+        if (res == "FNERR" || res == "FSERR")   // Exception
+            return;
         stringstream(res) >> fname >> fsize;
         cout << "Saved scoreboard to file " << fname << " (" << fsize << " bytes)." << endl << endl;
     }
     else    // Exception
-        cout << "Undefined reply from the server: " << rep << endl << endl;
+        cout << "Undefined reply from the server: " << type << status << endl << endl;
 }
 
 void handle_reply_hint(int sock) {
     // (RHL status [Fname Fsize Fdata])
     string type, status, fname, fsize;
-    ssize_t n;
-    FILE *fd;
-    char buffer[1024];
-    bool first = true;
+    ssize_t n; char c;
 
-    // Read from socket to the file and print to terminal
-    memset(buffer, 0, 1024);
-    while ((n = read(sock, buffer, 1024)) > 0) {
-        if (first) {
-            stringstream ss(buffer);
-            ss >> type >> status;
-            // "NOK": There is no file to be sent
-            if (status == "NOK") {
-                cout << "There is no file to be sent or there is some other problem." << endl << endl;
-                return;
-            }
-            // "OK": The hint is sent as an image file
-            if (status == "OK") {
-                ss >> fname >> fsize;
-                // Open/create the file with write permissions
-                if ((fd = fopen(fname.c_str(), "a")) == NULL)
-                    throw runtime_error("Error opening/creating file.");
-                // Skip the file name and file size and write the rest to the file and to the terminal
-                char *p = buffer;
-                int offset = fname.length() + fsize.length() + 2;
-                p += offset;
-                if (fwrite(p, sizeof(char), n - offset, fd) != (n - offset)*sizeof(char))
-                    throw runtime_error("Error writing to file.");
-                first = false;
-                continue;
-            }
-            else {  // Exception
-                cout << "Undefined reply from the server: " << type << status << endl << endl;
-                return;
-            }
-        }
-        // Make sure the entire buffer is written to the file and terminal
-        fseek(fd, 0, SEEK_END);
-        if (fwrite(buffer, sizeof(char), n, fd) != n*sizeof(char))
-            throw runtime_error("Error writing to file.");
+    // Get the type of message received
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        type += c;
+    if (type != "RHL") {    // Exception
+        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        return;
     }
-    fclose(fd);
-    cout << "Saved hint to file " << fname << " (" << fsize << " bytes)." << endl;
+    // Get the status
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        status += c;
+    // "NOK": There is no file to be sent
+    if (status == "NOK")
+        cout << "There is no file to be sent or there is some other problem." << endl << endl;
+    // "OK": The hint is sent as an image file
+    else if (status == "OK") {
+        string res = read_to_file(sock);
+        if (res == "FNERR" || res == "FSERR")   // Exception
+            return;
+        stringstream(res) >> fname >> fsize;
+        cout << "Saved hint to file " << fname << " (" << fsize << " bytes)." << endl;
+    }
+    else    // Exception
+        cout << "Undefined reply from the server: " << type << status << endl << endl;
     print_word_progress();
 }
 
-void handle_reply_state(string rep, int sock) {
+void handle_reply_state(int sock) {
     // (RST status [Fname Fsize Fdata])
     string type, status, fname, fsize;
-    stringstream(rep) >> type >> status;
-    
+    ssize_t n; char c;
+
+    // Get the type of message received
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        type += c;
+    if (type != "RST") {    // Exception
+        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        return;
+    }
+    // Get the status
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        status += c;
     // "NOK": There are no games (active or finished)
     if (status == "NOK")
         cout << "There are no games (active or finished) for this Player." << endl << endl;
-    // "ACT": There is an ongoing game and the file is sent / "FIN": There is no ongoing game
+    // "ACT": There is an ongoing game. "FIN": There is no ongoing game. The file is sent
     else if (status == "ACT" || status == "FIN") {
         string res = read_to_file(sock, "print");
+        if (res == "FNERR" || res == "FSERR")   // Exception
+            return;
         stringstream(res) >> fname >> fsize;
         cout << "Saved state to file " << fname << " (" << fsize << " bytes)." << endl << endl;
         if (status == "ACT")
@@ -415,8 +432,8 @@ void handle_reply_state(string rep, int sock) {
         else if (status == "FIN")
             game = false;
     }
-    else   // Exception
-        cout << "Undefined reply from the server: " << rep << endl << endl;
+    else    // Exception
+        cout << "Undefined reply from the server: " << type << status << endl << endl;
 }
 
 void handle_reply_quit(string rep) {
@@ -446,7 +463,7 @@ void handle_reply_reveal(string rep) {
     stringstream(rep) >> type >> status;
     
     // "ERR": There is no ongoing game or the syntax of the request or PLID are invalid
-    if (status == "ERR") // TODO: do we keep this?
+    if (status == "ERR")
         cout << "The PLID or the request was invalid or there is no ongoing game for this Player." << endl;
     // "word": The word was successfully revealed
     else if (is_valid_word(status)) {
@@ -456,7 +473,8 @@ void handle_reply_reveal(string rep) {
         cout << "You have revealed the word." << endl;
         print_word_progress();
         int sock = create_socket(addrUDP, progName);
-        rep = request(sock, addrUDP, "QUT " + PLID + "\n");
+        write_to_socket(sock, addrUDP, "QUT " + PLID + "\n");
+        rep = read_from_socket(sock);
         close(sock);
         handle_reply_quit(rep);
     }
@@ -467,11 +485,13 @@ void handle_reply_reveal(string rep) {
 void handle_signal_player(int sig) {
     // Ctrl + C
     if (sig == SIGINT) {
+        cout << endl;
         // If there is an ongoing game, quit it
         if (game) {
             string req = "QUT " + PLID + "\n";
             int sock = create_socket(addrUDP, progName);
-            string rep = request(sock, addrUDP, req);
+            write_to_socket(sock, addrUDP, "QUT " + PLID + "\n");
+            string rep = read_from_socket(sock);
             close(sock);
             handle_reply_quit(rep);
         }
@@ -481,24 +501,4 @@ void handle_signal_player(int sig) {
         cout << "Exiting..." << endl << endl;
         exit(0);
     }
-}
-
-void write_to_socket(int sock, addrinfo *addr, string rep) {
-    // UDP connection request
-    if (addr->ai_socktype == SOCK_DGRAM) {
-        // Connect and send a message
-        if (sendto(sock, rep.c_str(), rep.length(), 0, addrUDP->ai_addr, addrUDP->ai_addrlen) == -1)
-            throw runtime_error("Error sending UDP request message.");
-    }
-    // TCP connection request
-    else if (addr->ai_socktype == SOCK_STREAM) {
-        // Connect to the server
-        if (connect(sock, addr->ai_addr, addr->ai_addrlen) == -1)
-            throw runtime_error("Error connecting to server.");
-        // Send a message
-        if (write(sock, rep.c_str(), rep.length()) == -1)
-            throw runtime_error("Error sending TCP request message.");
-    }
-    else    // Exception
-        throw runtime_error("Invalid address type.");
 }
