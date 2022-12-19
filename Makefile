@@ -22,4 +22,4 @@ player: $(OBJ) player.cpp
 	$(CC) $(CFLAGS) -o player player.cpp $(OBJ)
  
 clean:
-	$(RM) $(TARGET)
+	$(RM) $(TARGET) core
