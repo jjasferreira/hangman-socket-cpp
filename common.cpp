@@ -20,6 +20,14 @@ bool is_valid_integer(const string &arg) {
     return all_of(arg.begin(), arg.end(), ::isdigit) && (arg.length() > 0);
 }
 
+bool is_valid_filename(const string &arg) {
+    return (arg.length() <= 24) && all_of(arg.begin(), arg.end(), [](char c) { return isalnum(c) || c == '-' || c == '_' || c == '.'; });
+}
+
+bool is_valid_filesize(const string &arg) {
+    return all_of(arg.begin(), arg.end(), ::isdigit) && (arg.length() > 0) && (stoi(arg) <= 1073741824);
+}
+
 addrinfo* get_server_address(string gsIP, string gsPort, string prot) {
     struct addrinfo hints, *server;
     char *IP = (char *) gsIP.c_str();
@@ -54,19 +62,12 @@ int create_socket(addrinfo *addr, string prog) {
     return sock;
 }
 
-string request(int sock, addrinfo *addr, string req) {
-    struct sockaddr_in address;
-    char buffer[64];
-    
+void write_to_socket(int sock, addrinfo *addr, string rep) {
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
         // Connect and send a message
-        if (sendto(sock, req.c_str(), req.length(), 0, addr->ai_addr, addr->ai_addrlen) == -1)
+        if (sendto(sock, rep.c_str(), rep.length(), 0, addr->ai_addr, addr->ai_addrlen) == -1)
             throw runtime_error("Error sending UDP request message.");
-        // Receive a message
-        socklen_t addrlen = sizeof(address);
-        if (recvfrom(sock, buffer, 64, 0, (struct sockaddr*) &address, &addrlen) == -1)
-            throw runtime_error("Error receiving UDP reply message.");
     }
     // TCP connection request
     else if (addr->ai_socktype == SOCK_STREAM) {
@@ -74,50 +75,60 @@ string request(int sock, addrinfo *addr, string req) {
         if (connect(sock, addr->ai_addr, addr->ai_addrlen) == -1)
             throw runtime_error("Error connecting to server.");
         // Send a message
-        if (write(sock, req.c_str(), req.length()) == -1)
+        if (write(sock, rep.c_str(), rep.length()) == -1)
             throw runtime_error("Error sending TCP request message.");
-        // Receive a message
-        if (read(sock, buffer, 64) == -1)
-            throw runtime_error("Error receiving TCP reply message.");
     }
     else    // Exception
         throw runtime_error("Invalid address type.");
+}
+
+string read_from_socket(int sock) {
+    struct sockaddr_in address;
+    char buffer[64];
+    ssize_t n;
+
+    // Receive a message
+    socklen_t addrlen = sizeof(address);
+    n = recvfrom(sock, buffer, 64, 0, (struct sockaddr*) &address, &addrlen);
+    if (n == -1)
+        throw runtime_error("Error receiving UDP reply message.");
+    buffer[n] = '\0';
     return buffer;
 }
 
 string read_to_file(int sock, string mode) {
-    string res, fname, fsize;
-    ssize_t n;
+    string fname, fsize;
     FILE *fd;
-    char buffer[1024];
-    bool first = true;
+    ssize_t n, size;
+    char buffer[1024], c;
 
-    // Read from socket to the file and print to terminal
+    // Read filename and filesize from socket and check if they are valid
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        fname += c;
+    if (!is_valid_filename(fname)) {    // Exception
+        cout << "The file name is invalid." << endl << endl;
+        return "FNERR";
+    }
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+        fsize += c;
+    if (!is_valid_filesize(fsize)) {    // Exception
+        cout << "The file size is invalid." << endl << endl;
+        return "FSERR";
+    }
+    size = stoi(fsize);
+    // Open/create the file with write permissions
+    if ((fd = fopen(fname.c_str(), "w")) == NULL)
+        throw runtime_error("Error opening/creating file.");
+    // Read data from socket to the file and print to terminal if mode is "print"
     memset(buffer, 0, 1024);
-    while ((n = read(sock, buffer, 1024)) > 0) {
-        cout << buffer << endl << endl; // TODO: rm line
-        if (first) {
-            stringstream(buffer) >> fname >> fsize;
-            // Open/create the file with write permissions
-            if ((fd = fopen(fname.c_str(), "w")) == NULL)
-                throw runtime_error("Error opening/creating file.");
-            // Skip the file name and file size
-            char *p = buffer;
-            int offset = fname.length() + fsize.length() + 2;
-            p += offset;
-            if (fwrite(p, sizeof(char), n - offset, fd) != (n - offset)*sizeof(char))
-                throw runtime_error("Error writing to file.");
-            if (mode == "print")
-                cout << p;
-            first = false;
-            continue;
-        }
-        // Make sure the entire buffer is written to the file
-        if (mode == "print")
-            cout << buffer;
+    while ((n = read(sock, buffer, 1024)) > 0 && size > 0) {
         if (fwrite(buffer, sizeof(char), n, fd) != n*sizeof(char))
             throw runtime_error("Error writing to file.");
+        size -= n;
+        if (mode == "print")
+            cout << buffer;
     }
+    // Close the file and print the result
     fclose(fd);
     return fname + " " + fsize;
 }
