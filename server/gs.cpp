@@ -5,13 +5,13 @@
 string progName;                    // Program name
 struct addrinfo *addrUDP, *addrTCP; // Addrinfo structs for UDP and TCP connections
 bool verbose = false;               // Verbose mode
-string words_file_name;             // File that stores the words and their hint file
-ifstream words_file;                // Input file stream for the words file
+string wordsFileName;               // File that stores the words and their hint file
+ifstream wordsFile;                 // Input file stream for the words file
 
 void dummy();
 
 string read_from_socket_udp(int sock, addrinfo *addr, struct sockaddr_in *addrPlayer);
-void write_to_socket_udp(int sock, struct sockaddr_in addrPlayer, addrinfo *addr, string rep);
+void write_to_socket_udp(int sock, struct sockaddr_in addrPlayer, string rep);
 
 int handle_request_tcp(string req, int nsock);
 int handle_request_scoreboard(int nsock);
@@ -42,9 +42,6 @@ string create_top_score_file(struct scorelist* top_scores);
 void create_score_file(string PLID, string gamefile);
 string find_letter_positions(string word, char letter);
 
-
-// ============================================ Filesystem ===============================================
-
 // Struct that saves the top 10 scores
 struct scorelist {
     int score[10];
@@ -72,14 +69,14 @@ int main(int argc, char *argv[]) {
     if (signal(SIGINT, handle_signal_gs) == SIG_ERR)
         throw runtime_error("Error defining signal handler");
 
-    // Check for input arguments (words_file [-p gsPort] [-v])
+    // Check for input arguments (wordsFile [-p gsPort] [-v])
     if (argc < 1)   // Exception
         throw invalid_argument("No words file specified");
     // Open the words file with the specified name
     else {
-        words_file_name = argv[1];
-        words_file.open(words_file_name);
-        if (!words_file.is_open())
+        wordsFileName = argv[1];
+        wordsFile.open(wordsFileName);
+        if (!wordsFile.is_open())
             throw runtime_error("Error opening words file");
     }
     // Overwrite the default Port and verbose mode
@@ -136,33 +133,33 @@ int main(int argc, char *argv[]) {
             int sock = create_socket(addrUDP, progName);
             string req = read_from_socket_udp(sock, addrUDP, &addrPlayer);
             string rep = handle_request_udp(req);
-            write_to_socket_udp(sock, addrPlayer, addrUDP, rep);
+            write_to_socket_udp(sock, addrPlayer, rep);
             close(sock);
         }
     }
     return 0;
 }
 
-// ==================================== Auxiliary Functions ========================================
+// ================================== UDP Auxiliary Functions ======================================
 
-string read_from_socket_udp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) {
-    socklen_t addrlen = sizeof(*addrPlayer);
-    ssize_t bytes_read;
+string read_from_socket_udp(int sock, addrinfo *addr, sockaddr_in* addrPlayer) {
+    socklen_t addrLen = sizeof(*addrPlayer);
     char buffer[1024];
+    ssize_t n;
 
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
         if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding UDP socket");
         // check number of bytes read, end buffer at that location
-        bytes_read = recvfrom(sock, buffer, 1024, 0, (struct sockaddr *) addrPlayer, &addrlen);
-        if (bytes_read <= 0)
+        n = recvfrom(sock, buffer, 1024, 0, (struct sockaddr *) addrPlayer, &addrLen);
+        if (n <= 0)
             throw runtime_error("Error reading from UDP socket");
-        buffer[bytes_read] = '\0';
+        buffer[n] = '\0';
         // Print the IP address and Port of the Player, if in verbose mode
         if (verbose) {
             char host[NI_MAXHOST], service[NI_MAXSERV];
-            if (getnameinfo((struct sockaddr *) addrPlayer, addrlen, host, sizeof(host), service, sizeof(service), 0) != 0)
+            if (getnameinfo((struct sockaddr *) addrPlayer, addrLen, host, sizeof(host), service, sizeof(service), 0) != 0)
                 cout << "Error getting the IP address and port of a Player." << endl << endl;
             else
                 cout << "[" << host << ":" << service << "] : " << buffer << endl;
@@ -170,13 +167,241 @@ string read_from_socket_udp(int sock, addrinfo *addr, struct sockaddr_in* addrPl
     }
     else    // Exception
         throw runtime_error("Invalid address type.");
-    printf("%s", buffer);   // TODO: rm line
     return buffer;
 }
 
+void write_to_socket_udp(int sock, sockaddr_in addrPlayer, string rep) {
+    socklen_t addrlen = sizeof(addrPlayer);
+    ssize_t n;
+
+    // UDP connection reply
+    n = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrlen);
+    if (n == -1 || n != rep.length())
+        throw runtime_error("Error sending UDP reply message.");
+}
+
+string handle_request_udp(string req) {
+    string rep, comm, PLID;
+    stringstream ss(req);
+    ss >> comm;
+    // Start
+    if (comm == "SNG") {
+        ss >> PLID;
+        rep = handle_request_start(PLID);
+    }
+    // Play
+    else if (comm == "PLG") {
+        string letter, trial;
+        ss >> PLID >> letter >> trial;
+        rep = handle_request_play(PLID, letter, trial);
+    }
+    // Guess
+    else if (comm == "PWG") {
+        string word, trial;
+        ss >> PLID >> word >> trial;
+        rep = handle_request_guess(PLID, word, trial);
+    }
+    // Quit/Exit
+    else if (comm == "QUT") {
+        ss >> PLID;
+        rep = handle_request_quit(PLID);
+    }
+    // Reveal
+    else if (comm == "REV") {
+        ss >> PLID;
+        rep = handle_request_reveal(PLID);
+    }
+    else    // Exception
+        rep = "ERR";
+    return rep + "\0";
+}
+
+string handle_request_start(string PLID) {
+    string rep = "RSG ";
+    string fname = find_active_game(PLID);
+
+    // "ERR": The PLID or the syntax was invalid
+    // TODO: check the syntax: size of whole request message string is 10
+    // gotta do the same for every other handle_request
+    if (!is_valid_plid(PLID))
+        return rep + "ERR\n";
+    // "NOK": The Player has an ongoing game: an active file with moves
+    if (fname != "" && has_moves(fname))
+        return rep += "NOK\n";
+    // "OK": The Player can start a new game
+    if (fname != "" && !has_moves(fname)) {
+        ifstream file(fname);
+        string line, word;
+        getline(file, line);
+        stringstream ss(line);
+        ss >> word;
+        int numLetters = word.length();
+        int maxErrors = calculate_max_errors(word.length());
+        return rep + "OK " + to_string(numLetters) + " " + to_string(maxErrors) + "\n";
+    }
+    return rep += "OK " + create_game_file(PLID) + "\n";
+}
+
+string handle_request_play(string PLID, string letter, string trial) {
+    string rep = "RLG ";
+    string fname = find_active_game(PLID);
+
+    // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
+    if (!is_valid_plid(PLID) || !is_valid_letter(letter) || !is_valid_integer(trial) || fname == "")
+        return rep + "ERR\n";
+    // Open player game file, get the word and the number of letters and errors
+    string line, word, pos;
+    fstream file(fname);
+    getline(file, line);
+    stringstream(line) >> word;
+    if (word.empty())   // Exception
+        throw runtime_error("Error reading word from file.");
+    int numLetters = word.length();
+    int maxErrors = calculate_max_errors(numLetters);
+    // Set a set containing all letters in the word
+    set<char> letters;
+    for (int i = 0; i < numLetters; i++)
+        letters.insert(word[i]);
+    // Process previous plays to get the number of errors and trials so far in the game
+    string code, play;
+    int errCount = 0, tr = 0;
+    while (getline(file, line)) {
+        tr++;
+        stringstream(line) >> code >> play;
+        if (code == "T") {
+            // "DUP": The played letter was sent in a previous trial
+            if (play == letter && tr != stoi(trial) - 1)
+                return rep + "DUP " + to_string(stoi(trial) - 1) + "\n";
+            // Remove from set. If the letter is not in the word, increase the error count 
+            else if (letters.erase(play[0]) == 0)
+                errCount++;
+        }
+        // On a previous guess attempt, increase the error count
+        else if (code == "G")
+            errCount++;
+    }
+    file.close();
+    cout << "trial: " << trial << " | errCount: " << errCount << " | tr: " << tr << endl; // TODO: rm line
+    // "INV": The trial number is invalid
+    if (tr != stoi(trial) - 1)
+        return rep + "INV " + trial + "\n";
+    // Write to file
+    file.open(fname, ios::out | ios::app);
+    file << "T " << letter << endl;
+    file.close();
+    // "WIN": The Player has won the game
+    if (letters.size() == 0) {
+        move_to_past_games(PLID, "win");
+        return rep + "WIN " + trial + "\n";
+    } 
+    // "OK": The letter is in the word
+    if (letters.find(letter[0]) != letters.end())
+        return rep += "OK " + trial + " " + find_letter_positions(word, letter[0]);
+    // "OVR": The Player has lost the game
+    if (errCount + 1 == maxErrors) {
+        move_to_past_games(PLID, "fail");
+        return rep + "OVR " + trial + "\n";
+    }
+    // "NOK": The letter is not in the word
+    return rep + "NOK " + trial + "\n";
+}
+
+string handle_request_guess(string PLID, string guess, string trial) {
+    string rep = "RWG ";
+    string fname = find_active_game(PLID);
+
+    // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
+    if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || fname == "")
+        return rep + "ERR\n";
+    // Open Player game file and get the word and the maximum number of errors
+    string line, word;
+    fstream file(fname);
+    getline(file, line);
+    stringstream(line) >> word;
+    int numLetters = word.length();
+    int maxErrors = calculate_max_errors(numLetters);
+    // Set a set containing all letters in the word
+    set<char> letters;
+    for (int i = 0; i < numLetters; i++)
+        letters.insert(word[i]);
+    // Process previous plays to get the number of errors and trials so far in the game
+    string code, play;
+    int errCount = 0, tr = 0;
+    while (getline(file, line)) {
+        tr++;
+        stringstream(line) >> code >> play;
+        if (code == "G") {
+            // "DUP": The guessed word was sent in a previous trial
+            if (play == guess && tr != stoi(trial) - 1)
+                return rep + "DUP " + to_string(stoi(trial) - 1) + "\n";
+            // Increase the error count
+            else
+                errCount++;
+        }
+        // Remove from set. If the letter is not in the word, increase the error count
+        else if (code == "T" && letters.erase(play[0]) == 0)
+            errCount++;
+    }
+    file.close();
+    cout << "trial: " << trial << " | tr: " << tr << " | errCount: " << errCount << " | maxErrors: " << maxErrors << endl; // TODO: rm line
+    // "INV": The trial number is invalid
+    if (tr != stoi(trial) - 1)
+        return rep + "INV " + trial + "\n";
+    // Write guess to file
+    file.open(fname, ios::out | ios::app);
+    file << "G " << guess << endl;
+    file.close();
+    // "WIN": The word guess was successful
+    if (guess == word) {
+        move_to_past_games(PLID, "win");
+        return rep + "WIN " + trial + "\n";
+    }
+    // "OVR": The word guess was not successful and the game is over
+    if (errCount + 1 == maxErrors) {
+        move_to_past_games(PLID, "fail");;
+        return rep + "OVR " + trial + "\n";
+    }
+    // "NOK": The word guess was not successful
+    return rep + "NOK " + trial + "\n";
+}
+
+string handle_request_quit(string PLID) {
+    string rep = "RQT ";
+
+    // "ERR": The PLID or the syntax was invalid
+    if (!is_valid_plid(PLID))
+        return rep + "ERR\n";
+    // "NOK": There is no ongoing game for this Player
+    if (find_active_game(PLID) == "")
+        return rep + "NOK\n";
+    // "OK": The game was successfully terminated
+    move_to_past_games(PLID, "quit");
+    return rep + "OK\n";
+}
+
+string handle_request_reveal(string PLID) {
+    string rep = "RRV ";
+    string fname = find_active_game(PLID);
+
+    // "ERR": The PLID is invalid or there is no ongoing game for this Player
+    if (!is_valid_plid(PLID) || fname == "")
+        return rep + "ERR\n";
+    // "word": The game was successfully terminated
+    fstream file;
+    string line, word;
+    file.open(fname);
+    getline(file, line);
+    stringstream(line) >> word;
+    file.close();
+    move_to_past_games(PLID, "quit");
+    return rep + word + "\n";
+}
+
+// ================================== TCP Auxiliary Functions ======================================
+
 void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) {
     socklen_t addrlen = sizeof(*addrPlayer);
-    ssize_t bytes_read;
+    ssize_t n;
 
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
@@ -188,22 +413,6 @@ void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) 
     else    // Exception
         throw runtime_error("Invalid address type.");
 }
-
-void write_to_socket_udp(int sock, struct sockaddr_in addrPlayer, addrinfo *addr, string rep) {
-    // TODO: do we need addr?
-    // UDP connection reply
-    if (addr->ai_socktype == SOCK_DGRAM) {
-        socklen_t addrlen = sizeof(addrPlayer);
-        ssize_t errnumber = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrlen);
-        if (errnumber == -1)
-            throw runtime_error("Error sending UDP reply message.");
-    }
-    else    // Exception
-        throw runtime_error("Invalid address type.");
-}
-
-
-// ==================================== TCP Request Handlers ========================================
  
 int handle_request_tcp(string req , int sock) {
     // TCP commands may be GSB, GHL or STA
@@ -253,277 +462,21 @@ string create_top_score_file(struct scorelist *scoreboard) {
 }
 
 int send_file(int sock, string scoreboard_file, int chunk_size) {
-
 }
 
 int send_buffer(int sock, const char* buffer, int buffer_size, int chunk_size) { // maybe not needed
-    
-}
-// ==================================== UDP Request Handlers ========================================
-
-string handle_request_udp(string req) {
-    string rep, comm, PLID;
-    stringstream ss(req);
-    ss >> comm;
-    // Start
-    if (comm == "SNG") {
-        ss >> PLID;
-        rep = handle_request_start(PLID);
-    }
-    // Play
-    else if (comm == "PLG") {
-        string letter, trial;
-        ss >> PLID >> letter >> trial;
-        rep = handle_request_play(PLID, letter, trial);
-    }
-    // Guess
-    else if (comm == "PWG") {
-        string word, trial;
-        ss >> PLID >> word >> trial;
-        rep = handle_request_guess(PLID, word, trial);
-    }
-    // Quit/Exit
-    else if (comm == "QUT") {
-        ss >> PLID;
-        rep = handle_request_quit(PLID);
-    }
-    // Reveal
-    else if (comm == "REV") {
-        ss >> PLID;
-        rep = handle_request_reveal(PLID);
-    }
-    else    // Exception
-        rep = "ERR";
-    return rep + "\0";
 }
 
-string handle_request_start(string PLID) {
-    string rep = "RSG ";
-    string fname = find_active_game(PLID);
-
-    // "ERR": The PLID or the syntax was invalid
-    // TODO: gotta check if size of request message string is 10, so maybe pass the string as argument instead of PLID
-    if (!is_valid_plid(PLID))
-        return rep + "ERR\n";
-    // "NOK": The Player has an ongoing game: an active file with moves
-    if (fname != "" && !has_moves(fname)) {
-        ifstream file(fname);
-        string line, word;
-        getline(file, line);
-        stringstream ss(line);
-        ss >> word;
-        int num_errors = calculate_max_errors(word.length());
-        return rep += "OK " + to_string(num_errors) + "\n";
-    }
-    if (fname != "" && has_moves(fname))
-        return rep += "NOK\n";
-    // "OK": The player can start a new game
-    return rep += "OK " + create_game_file(PLID) + "\n";
-}
-
-string handle_request_play(string PLID, string letter, string trial) {
-    string rep = "RLG ";
-    string fname = find_active_game(PLID);
-
-    // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
-    if (!is_valid_plid(PLID) || !is_valid_letter(letter) || !is_valid_integer(trial) || fname == "")
-        return rep + "ERR\n";
-
-    // Open player game file, get the word and find the positions of the letter
-    fstream file(fname, ios::out | ios::in);
-    string line, word, pos;
-    getline(file, line);
-    stringstream(line) >> word;
-    if (word.empty())   // Exception
-        throw runtime_error("Error reading word from file.");
-
-    int numLetters = word.length();
-    int max_errors = calculate_max_errors(numLetters);
-
-    set<char> letters; // Set containing all letters in word
-    for (int i = 0; i < numLetters; i++)
-        letters.insert(word[i]);
-    pos = find_letter_positions(word, letter[0]);
-
-    // Process previous plays
-    string cmd, pl;
-    int error_count = 0, tr = 0; // error_count: number of errors in the game so far, tr: number of trials so far
-    while (getline(file, line)) {
-        tr++;
-        stringstream(line) >> cmd >> pl;
-        if (cmd == "T") {
-            // "DUP": The played letter was sent in a previous trial
-            if (pl == letter && tr != stoi(trial) - 1)
-                return rep + " DUP " + to_string(stoi(trial)-1);
-            else if (letters.erase(pl[0]) == 0) { // If the letter is not in the word, increase the error count 
-                error_count++;
-            } 
-        else if (cmd == "G") // If there was a previous guess attempt, increase the error count
-                error_count++;
-        }
-    }
-    file.close();
-
-    cout << "trial: " << trial << "error count: " << error_count << "tr: " << tr << endl; // DEBUG
-
-    // "INV": The trial number is invalid (should be one more than the number of trials so far)
-    if (tr != stoi(trial) - 1)
-        return rep + " INV " + trial;
-    // "WIN": The Player has won the game
-    if (letters.size() == 0) {
-        move_to_past_games(PLID, "win");
-        return rep + " WIN " + trial;
-    } 
-    // "OK": The letter is in the word
-    else if (letters.find(letter[0]) != letters.end()) { // check if letter is in letters
-        rep += " OK " + trial + " " + pos;
-        // write to file
-    }
-    // "NOK": The letter is not in the word
-    else {
-        // "OVR": The Player has lost the game
-        if (error_count + 1 == max_errors) {
-            move_to_past_games(PLID, "fail");
-            return rep + " OVR " + trial;
-        }
-        rep += " NOK " + trial;
-    }
-    // Write to file
-    file.open(fname, ios::out | ios::app);
-    file << "T " << letter << endl;
-    file.close();
-    return rep;
-    
-}
-
-string handle_request_guess(string PLID, string guess, string trial) {
-    string rep = "RWG ";
-    string fname = find_active_game(PLID);
-
-    // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
-    if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || fname == "")
-        return rep += "ERR\n";
-    // Open Player game file and get the word and the maximum number of errors
-    string line, word;
-    fstream file;
-    file.open(fname);
-    getline(file, line);
-    stringstream(line) >> word;
-    int max_errors = calculate_max_errors(word.length()), numLetters = word.length();
-
-    set<char> letters; // Set containing all letters in word
-    for (int i = 0; i < numLetters; i++)
-        letters.insert(word[i]);
-
-    // Get the number of trials and check if the Player has already guessed this word
-    string cd, pl;
-    int tr = 0, error_count = 0;
-
-    while (getline(file, line)) {
-        cout << "line: " << line << endl; // DEBUG
-        tr++;
-        stringstream(line) >> cd >> pl;
-        // "DUP": The guessed word was sent in a previous trial
-        if (cd == "G") {
-            if (pl != guess)
-                error_count++;
-            else if (pl == guess && tr != stoi(trial)-1) // DUP is returned if the word was guessed, but not in the last trial
-                return rep + "DUP " + to_string(stoi(trial)-1) + "\n";
-            else
-                return rep + "NOK " + to_string(stoi(trial)-1) + "\n";
-        }
-        else if (cd == "T" && letters.erase(pl[0]) == 0) // if the letter is not in the word, increase the error count 
-            error_count++;
-    }
-    file.close();
-
-    cout << "debug_guess trial: " << trial << " / tr: " << tr << " error_count: " << error_count << " max_errors: " << max_errors << endl; // DEBUG
-
-    // "INV": The trial number is invalid
-    if (tr != stoi(trial) - 1) {
-        cout << "trial: " << trial << " / tr: " << tr << " error_count: " << error_count << endl;    // DEBUG
-        return rep + "INV " + trial + "\n";
-    }
-    // "WIN": The word guess was successful
-    else if (guess == word) {
-        // Write guess to file
-        file.open(fname, ios::out | ios::app);
-        file << "G " << guess << endl;
-        file.close();
-        move_to_past_games(PLID, "win");
-        rep += "WIN " + trial + "\n";
-    }
-    // "NOK": The word guess was not successful
-    else {
-        // "OVR": The word guess was not successful and the game is over
-        if (error_count == max_errors) {
-            file.open(fname, ios::out | ios::app);
-            // Write guess to file
-            file << "G " << guess << endl;
-            file.close();
-            move_to_past_games(PLID, "fail");;
-            return rep + "OVR " + trial + "\n";
-        }
-        rep += "NOK " + trial + "\n";
-    }
-    // Write guess to file
-    file.open(fname, ios::out | ios::app);
-    file << "G " << guess << endl;
-    file.close();
-    return rep;
-}
-
-string handle_request_quit(string PLID) {
-    string rep = "RQT ";
-
-    // "ERR": The PLID or the syntax was invalid
-    if (!is_valid_plid(PLID))   // TODO: how do we know abt the syntax? we need the whole request
-        return rep += "ERR\n";
-    // "NOK": There is no ongoing game for this Player
-    if (find_active_game(PLID) == "")
-        return rep += "NOK\n";
-    // "OK": The game was successfully terminated
-    move_to_past_games(PLID, "quit");
-    return rep += "OK\n";
-}
-
-string handle_request_reveal(string PLID) {
-    string rep = "RRV ";
-    string fname = find_active_game(PLID);
-
-    // "ERR": The PLID is invalid or there is no ongoing game for this Player
-    if (!is_valid_plid(PLID) || fname == "")
-        return rep += "ERR\n";
-    // "word": The game was successfully terminated
-    fstream file;
-    string line, word;
-    file.open(fname);
-    getline(file, line);
-    stringstream(line) >> word;
-    file.close();
-    move_to_past_games(PLID, "quit");
-    return rep + word + "\n";
-}
-
-// ============================================ Filesystem ===============================================
-
-int calculate_max_errors(int len) {
-    int res;
-    if (len <= 6)
-        res = 7;
-    else if (len <= 10)
-        res = 8;
-    else
-        res = 9;
-    return res;
-}
+// ========================================= Filesystem ============================================
 
 bool has_moves(string fname) {
     ifstream file(fname);
     string line;
     // If we are able to read a line, check if there is another line
-    if (getline(file, line))
-        return getline(file, line);
+    if (getline(file, line)) {
+        getline(file, line);
+        return (line.length() > 0);
+    }
     return false;
 }
 
@@ -615,12 +568,12 @@ string create_game_file(string PLID) {
 
 string get_word() {
     string line, word, hint;
-    if (words_file.good()) {
-        getline(words_file, line);
+    if (wordsFile.good()) {
+        getline(wordsFile, line);
     } else {
-        words_file.close();
-        words_file.open(words_file_name);
-        getline(words_file, line);
+        wordsFile.close();
+        wordsFile.open(wordsFileName);
+        getline(wordsFile, line);
     }
     /*
     vector<string> lines;
@@ -629,7 +582,7 @@ string get_word() {
 
     // Open file containing words
     //TODO: check if file exists
-    ifstream input(words_file);
+    ifstream input(wordsFile);
     while (getline(input, line)) {
         ++numLines;
         lines.push_back(line);
@@ -715,12 +668,23 @@ string find_letter_positions(string word, char letter) {
     return to_string(occ) + " " + pos;
 }
 
+int calculate_max_errors(int len) {
+    int res;
+    if (len <= 6)
+        res = 7;
+    else if (len <= 10)
+        res = 8;
+    else
+        res = 9;
+    return res;
+}
+
 void handle_signal_gs(int sig) {
     // Ctrl + C
     if (sig == SIGINT) {
         // Close the words file
-        if (words_file.is_open())
-            words_file.close();
+        if (wordsFile.is_open())
+            wordsFile.close();
         // Close all file descriptors (sockets and files)
         for (int i = 0; i < getdtablesize(); i++)
             close(i);

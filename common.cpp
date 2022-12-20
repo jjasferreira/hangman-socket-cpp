@@ -84,12 +84,12 @@ void write_to_socket(int sock, addrinfo *addr, string rep) {
 
 string read_from_socket(int sock) {
     struct sockaddr_in address;
-    char buffer[64];
+    socklen_t addrLen = sizeof(address);
+    char buffer[1024];
     ssize_t n;
 
     // Receive a message
-    socklen_t addrlen = sizeof(address);
-    n = recvfrom(sock, buffer, 64, 0, (struct sockaddr*) &address, &addrlen);
+    n = recvfrom(sock, buffer, 1024, 0, (struct sockaddr*) &address, &addrLen);
     if (n == -1)
         throw runtime_error("Error receiving UDP reply message.");
     buffer[n] = '\0';
