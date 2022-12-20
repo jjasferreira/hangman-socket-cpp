@@ -18,6 +18,7 @@ int handle_request_scoreboard(int nsock);
 int handle_request_status(string PLID, int nsock);
 int handle_request_hint(string PLID, int nsock);
 
+
 // Function that calls handlers depending on the request
 string handle_request_udp(string req);
 
@@ -40,13 +41,15 @@ bool has_moves(string fname);
 void move_to_past_games(string PLID, string status);
 string create_top_score_file(struct scorelist* top_scores);
 void create_score_file(string PLID, string gamefile);
+string create_status_file(string PLID);
+string find_hint(string PLID);
 string find_letter_positions(string word, char letter);
 
 // Struct that saves the top 10 scores
 struct scorelist {
     int score[10];
-    char *PLID[10];
-    char *word[10];
+    string PLID[10];
+    string word[10];
     int numSuccess[10];
     int numTrials[10];
     int numScores;
@@ -96,35 +99,35 @@ int main(int argc, char *argv[]) {
     pid_t pid = fork();
     // Child process listens to TCP connections
     if (pid == 0) {
-        while (true) {
-            struct sockaddr_in addrPlayer;
-            int sock = create_socket(addrTCP, progName);
-            setup_socket_tcp(sock, addrTCP, &addrPlayer);
+        // while (true) {
+        //     struct sockaddr_in addrPlayer;
+        //     int sock = create_socket(addrTCP, progName);
+        //     setup_socket_tcp(sock, addrTCP, &addrPlayer);
 
-            char buffer[1024];
-            ssize_t bytes_read;
-            socklen_t addrlen = sizeof(addrPlayer);
-            while (true) {
-                int nsock;
-                // Accept connection to the server
-                if ((nsock = accept(sock, (struct sockaddr *) &addrPlayer, &addrlen)) == -1)
-                    throw runtime_error("Error accepting connection to server.");
-                // Receive a message
-                bytes_read = read(nsock, buffer, 1024);
-                if (bytes_read == -1)
-                    throw runtime_error("Error receiving TCP request message.");
-                buffer[bytes_read] = '\0';
-                pid_t pid_tcp = fork();
-                if (pid_tcp == 0) { // Child process
-                    string req = buffer;
-                    int status = handle_request_tcp(req, nsock);
-                    close(nsock);
-                    exit(0);
-                }
-                close(nsock);
-            }
-            close(sock);
-        }
+        //     char buffer[1024];
+        //     ssize_t bytes_read;
+        //     socklen_t addrlen = sizeof(addrPlayer);
+        //     while (true) {
+        //         int nsock;
+        //         // Accept connection to the server
+        //         if ((nsock = accept(sock, (struct sockaddr *) &addrPlayer, &addrlen)) == -1)
+        //             throw runtime_error("Error accepting connection to server.");
+        //         // Receive a message
+        //         bytes_read = read(nsock, buffer, 1024);
+        //         if (bytes_read == -1)
+        //             throw runtime_error("Error receiving TCP request message.");
+        //         buffer[bytes_read] = '\0';
+        //         pid_t pid_tcp = fork();
+        //         if (pid_tcp == 0) { // Child process
+        //             string req = buffer;
+        //             int status = handle_request_tcp(req, nsock);
+        //             close(nsock);
+        //             exit(0);
+        //         }
+        //         close(nsock);
+        //     }
+        //     close(sock);
+        // }
     }
     // Parent process listens to UDP connections
     else {
@@ -176,7 +179,7 @@ void write_to_socket_udp(int sock, sockaddr_in addrPlayer, string rep) {
 
     // UDP connection reply
     n = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrlen);
-    if (n == -1 || n != rep.length())
+    if ((int)n == -1 || (int)n != (int)rep.length())
         throw runtime_error("Error sending UDP reply message.");
 }
 
@@ -289,14 +292,16 @@ string handle_request_play(string PLID, string letter, string trial) {
     file.open(fname, ios::out | ios::app);
     file << "T " << letter << endl;
     file.close();
-    // "WIN": The Player has won the game
-    if (letters.size() == 0) {
-        move_to_past_games(PLID, "win");
-        return rep + "WIN " + trial + "\n";
-    } 
+ 
     // "OK": The letter is in the word
-    if (letters.find(letter[0]) != letters.end())
+    if (letters.find(letter[0]) != letters.end()) {
+        // "WIN": The Player has won the game
+        if (letters.size() == 1) {
+            move_to_past_games(PLID, "win");
+            return rep + "WIN " + trial + "\n";
+        }
         return rep += "OK " + trial + " " + find_letter_positions(word, letter[0]);
+    }
     // "OVR": The Player has lost the game
     if (errCount + 1 == maxErrors) {
         move_to_past_games(PLID, "fail");
@@ -436,24 +441,67 @@ int handle_request_tcp(string req , int sock) {
 }
 
 int handle_request_scoreboard(int sock) {
+    // RSB status, where status is OK if there have been finished games, otherwise EMPTY
     struct scorelist *scoreboard = find_top_scores();
     string scoreboard_file = create_top_score_file(scoreboard);
-    int chunk_size = 1024;
-    int status = send_file(sock, scoreboard_file, chunk_size);
+    int chunkSize = 1024;
+    // send("RSB OK")
+    int status = send_file(sock, scoreboard_file, chunkSize);
     return status != -1 ? 0 : -1;
+}
+
+int handle_request_hint(string PLID, int sock) {
+    // RHL status, where status is OK if the hint file exists, otherwise NOK
+    string hint = find_hint(PLID);
+    int chunkSize = 1024;
+    int status = send_file(sock, hint, chunkSize);
+    return status != -1 ? 0 : -1;
+}
+
+int handle_request_status(string PLID, int sock) {
+    // RST status, where status is ACT if there is an ongoing game, FIN if there is a finished game, otherwise NOK
+    string status = create_status_file(PLID);
+    int chunkSize = 1024;
+    // send 
+    int status = send_file(sock, status, chunkSize);
+    return status != -1 ? 0 : -1;
+}
+
+string create_status_file(string PLID) {
+    string fname = find_active_game(PLID), sfile_name;
+    if (fname == "") { // no active game
+        fname = find_last_game(PLID);
+        if (fname == "") // no past games
+            throw runtime_error("Invalid PLID.");
+    }
+    fstream file(fname);
+    
+    return sfile_name;
+}
+
+
+string find_hint(string PLID) {
+    string fname = find_active_game(PLID);
+    fstream gfile;
+    gfile.open(fname);
+    string line, word, hint;
+    getline(gfile, line);
+    stringstream(line) >> word >> hint;
+    gfile.close();
+    return "server/images/" + hint;
 }
 
 string create_top_score_file(struct scorelist *scoreboard) {
     pid_t pid = getpid();
     string filename = "server/temp/TOPSCORES_" + to_string(pid) + ".txt";
-    ofstream file(filename);
+    ofstream file(filename, ios::out | ios::trunc);
     file << "-------------------------------- TOP 10 SCORES --------------------------------" << endl << endl;
-    file << "    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS" << endl;
+    file << "    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS" << endl << endl;
     for (int i = 0; i < scoreboard->numScores; ++i) {
-        file << std::setw(2) << i + 1 << " - " << std::setw(3) << scoreboard->score[i] << "  "
-                << std::setw(6) << scoreboard->PLID[i] << "  " << std::setw(30) << scoreboard->word[i] << "  "
-                << std::setw(15) << scoreboard->numSuccess[i] << " " << std::setw(15) << scoreboard->numTrials[i]
-                << std::endl;
+        file << std::left << " " << std::setw(1) << i + 1 << " - " << std::setw(3) << scoreboard->score[i] << "  "
+                << std::setw(8) << scoreboard->PLID[i] << std::setw(38) << scoreboard->word[i] << "  "
+                << std::setw(14) << scoreboard->numSuccess[i] << scoreboard->numTrials[i]
+                << std::endl;   
     }
 
     file.close();
@@ -461,10 +509,41 @@ string create_top_score_file(struct scorelist *scoreboard) {
     return filename;
 }
 
-int send_file(int sock, string scoreboard_file, int chunk_size) {
+void send_file(int sock, string fpath, int chunkSize) {
+    // Extract the substring after the last slash
+    size_t lastSlashPos = fpath.find_last_of('/');
+    string fname = fpath.substr(lastSlashPos + 1);
+    string fsize = to_string(get_file_size(fpath));
+
+    // Send the file name and size
+    if (send(sock, fname.c_str(), fname.length(), 0) < 0)
+        throw runtime_error("Error sending file name.");
+    if (send(sock, fsize.c_str(), fsize.length(), 0) < 0)
+        return runtime_error("Error sending file size.");
+        
+    // Send the file contents
+    FILE *fd;
+    ssize_t n, size;
+    char buffer[1024];
+    // Open the file with read permissions
+    if ((fd = fopen(fpath.c_str(), "r")) == NULL)
+        throw runtime_error("Error opening file.");
+    // Send data from the file to the TCP socket
+    memset(buffer, 0, 1024);
+    while ((n = fread(buffer, 1, 1024, fd)) > 0) {
+        if (send(sock, buffer, n, 0) < 0)
+            throw runtime_error("Error writing to file.");
+        memset(buffer, 0, 1024);
+    }
+    // Close the file and print the result
+    fclose(fd);
 }
 
-int send_buffer(int sock, const char* buffer, int buffer_size, int chunk_size) { // maybe not needed
+
+long get_file_size(string fname) {
+    struct stat statBuf;
+    int res = stat(fname.c_str(), &statBuf);
+    return res == 0 ? statBuf.st_size : -1;
 }
 
 // ========================================= Filesystem ============================================
@@ -484,7 +563,7 @@ void move_to_past_games(string PLID, string status) {
     string fname = find_active_game(PLID), date;
     
     if (fname == "")
-        throw "No active game found for this PLID";
+        throw runtime_error("No active game found for this PLID");
 
     create_score_file(PLID, fname);
 
@@ -506,6 +585,8 @@ void move_to_past_games(string PLID, string status) {
 
 void create_score_file(string PLID, string gamefile) {
     fstream gfile(gamefile);
+    if (!gfile.is_open())
+        cout << "Error opening game file" << endl;
     // get word from gamefile
     string word, line;
     getline(gfile, line);
@@ -515,21 +596,27 @@ void create_score_file(string PLID, string gamefile) {
     for (char c : word)
         letters.insert(c);
 
-    int score = 0, n_succ, n_trials;
+    dummy();
+
+    int score = 0, n_succ = 0, n_trials = 0;
     string cmd, pl;
     // compute score
     while (getline(gfile, line)) {
-        stringstream ss(line);
         n_trials++;
+        stringstream ss(line);
+        cout << line << endl;
+        ss >> cmd >> pl;
         if (cmd == "G") {
             if (pl == word)
                 n_succ++;
-        else if (cmd == "T")
+        }
+        else if (cmd == "T") {
             if (letters.find(pl[0]) != letters.end())
                 n_succ++;
         }
     }
 
+    cout << "n_succ: " << n_succ << " n_trials: " << n_trials << endl;
     // file name should be score_PLID_DDMMYYYY_HHMMSS.txt
     score = n_succ * 100 / n_trials;
     time_t t = time(0);
@@ -538,9 +625,11 @@ void create_score_file(string PLID, string gamefile) {
     to_string(now->tm_mday) + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
     string sfile_name = "server/scores/" + to_string(score) + "_" + PLID + "_" + date + ".txt";
 
-    fstream sfile(sfile_name);
+    ofstream sfile;
+    sfile.open(sfile_name, ios::out | ios::in | ios::trunc);
+    cout << sfile_name << endl;
     if (!sfile.good()) {
-        throw "Could not create score file";
+        throw runtime_error("Could not create score file");
     }
     sfile << to_string(score) << " " << PLID << " " << word << " " << to_string(n_succ) << " " << to_string(n_trials) << endl;
 }
@@ -603,15 +692,17 @@ string find_active_game(string PLID) {
 }
 
 string find_last_game(string PLID) {
-    bool found;
     struct dirent **filelist;
     string fname, dname = "server/games/" + PLID + "/";
+    bool found;
+    // Scan the directory for the last game
     int numEntries = scandir(dname.c_str(), &filelist, 0, alphasort);
     if (numEntries <= 0)
         return "";
     else {
         while (numEntries--) {
-            if (filelist[numEntries]->d_name[0] != '.') {
+            // Check if the file is a regular file
+            if (filelist[numEntries]->d_type == DT_REG) {
                 fname = dname + filelist[numEntries]->d_name;
                 found = true;
             }
@@ -627,20 +718,23 @@ string find_last_game(string PLID) {
 scorelist* find_top_scores() {
     struct dirent **filelist;
     struct scorelist *list = new scorelist;
-    string fname, dname = "scores/";
+    string fname, dname = "server/scores/";
+    // Scan the directory for the top 10 scores
     int i = 0, numEntries = scandir(dname.c_str(), &filelist, 0, alphasort);
-    FILE *fp;
     if (numEntries < 0)
         return NULL;
     else {
         while (numEntries--) {
-            if (filelist[numEntries]->d_name[0] != '.') {
+            // Check if the file is a regular file
+            if (filelist[numEntries]->d_type == DT_REG) {
                 fname = dname + filelist[numEntries]->d_name;
-                fp = fopen(fname.c_str(), "r");
-                if (fp != NULL) {
-                    fscanf(fp, "%d %s %s %d %d", &list->score[i], list->PLID[i], list->word[i], &list->numSuccess[i], &list->numTrials[i]);
-                    fclose(fp);
-                    ++i;
+                ifstream file(fname);
+                if (file.is_open()) {
+                    string line;
+                    getline(file, line);
+                    stringstream(line) >> list->score[i] >> list->PLID[i] >> list->word[i] >> list->numSuccess[i] >> list->numTrials[i];
+                    file.close();
+                    i++;
                 }
             }
             delete filelist[numEntries];
