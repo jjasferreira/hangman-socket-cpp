@@ -391,7 +391,7 @@ void handle_reply_hint(int sock) {
         cout << "There is no file to be sent or there is some other problem." << endl << endl;
     // "OK": The hint is sent as an image file
     else if (status == "OK") {
-        string res = read_to_file(sock, "");
+        string res = read_to_file(sock);
         if (res == "FNERR" || res == "FSERR")   // Exception
             return;
         stringstream(res) >> fname >> fsize;

@@ -18,11 +18,8 @@
 - _state/st_: [ ] RST
 
 - docstrings for functions so that when the teachers hover them, they see the description?
-- RCOMP command for debugging?
 
 ---
-
-- se player receber invalid trial number o ctrl c deixa de funcionar
 
 ## doubts
 
@@ -35,8 +32,6 @@
 ## teacher tips
 
 - In the player, have timers in UDP sockets. In the server, have a timer to close TCP sockets after they've sent everything >> kill child process >> wait in parent process >> exit server
-
-- fgtets para state e para scoreboard, fwrite para hints (servidor)
 
 - We have to close all TCP processes inside the Ctrl+C signal handler (using wait/waitpid?)
 
