@@ -451,7 +451,7 @@ void handle_reply_quit(string rep) {
             cout << "Game successfully quit." << endl << endl;
         // "NOK": There is no ongoing game for this Player
         else if (status == "NOK")
-            cout << "There is no ongoing game for this Player." << endl;
+            cout << "There is no ongoing game for this Player." << endl << endl;
         else    // Exception
             cout << "Undefined reply from the server: " << rep << endl << endl;
     }
@@ -464,7 +464,7 @@ void handle_reply_reveal(string rep) {
     
     // "ERR": There is no ongoing game or the syntax of the request or PLID are invalid
     if (status == "ERR")
-        cout << "The PLID or the request was invalid or there is no ongoing game for this Player." << endl;
+        cout << "The PLID or the request was invalid or there is no ongoing game for this Player." << endl << endl;
     // "word": The word was successfully revealed
     else if (is_valid_word(status)) {
         game = false;

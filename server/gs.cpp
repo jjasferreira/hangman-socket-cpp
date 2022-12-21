@@ -5,6 +5,7 @@
 string progName;                    // Program name
 struct addrinfo *addrUDP, *addrTCP; // Addrinfo structs for UDP and TCP connections
 bool verbose = false;               // Verbose mode
+pid_t pidChild;                     // Child process ID
 string wordsFileName;               // File that stores the words and their hint file
 ifstream wordsFile;                 // Input file stream for the words file
 
@@ -43,17 +44,21 @@ int main(int argc, char *argv[]) {
     string gsPort = to_string(58000 + GN);
 
     // Define signal handler to safely exit the program
+    if (signal(SIGABRT, handle_signal_gs) == SIG_ERR)
+        throw runtime_error("Error defining signal handler for SIGABRT.");
+    if (signal(SIGSEGV, handle_signal_gs) == SIG_ERR)
+        throw runtime_error("Error defining signal handler for SIGSEGV.");
     if (signal(SIGINT, handle_signal_gs) == SIG_ERR)
-        throw runtime_error("Error defining signal handler");
+        throw runtime_error("Error defining signal handler for SIGINT.");
 
     // Check for input arguments (wordsFile [-p gsPort] [-v])
-    if (argc < 1)   // Exception
-        throw invalid_argument("No words file specified");
+    if (argc < 2)   // Exception
+        throw invalid_argument("No words file specified.");
     // Open the words file with the specified name
     else {
         wordsFileName = argv[1];
         wordsFile.open(wordsFileName);
-        if (!wordsFile.is_open())
+        if (!wordsFile.is_open())   // Exception
             throw runtime_error("Error opening words file");
     }
     // Overwrite the default Port and verbose mode
@@ -97,7 +102,7 @@ int main(int argc, char *argv[]) {
                     if (getnameinfo((struct sockaddr*)&addrPlayer, addrLen, host, sizeof(host), service, sizeof(service), 0) != 0)
                         cout << "Error getting the IP address and port of a Player." << endl << endl;
                     else
-                        cout << "[" << host << ":" << service << "] : " << buffer << endl;
+                        cout << "[" << host << ":" << service << "] : " << buffer;
                 }
                 // Fork a new process to handle the request
                 pid_t pidTCP = fork();
@@ -114,6 +119,7 @@ int main(int argc, char *argv[]) {
     }
     // Parent process listens to UDP connections
     else {
+        pidChild = pid;
         while (true) {
             struct sockaddr_in addrPlayer;
             int sock = create_socket(addrUDP, progName);
@@ -148,7 +154,7 @@ string read_from_socket_udp(int sock, addrinfo *addr, sockaddr_in* addrPlayer) {
             if (getnameinfo((struct sockaddr*)addrPlayer, addrLen, host, sizeof(host), service, sizeof(service), 0) != 0)
                 cout << "Error getting the IP address and port of a Player." << endl << endl;
             else
-                cout << "[" << host << ":" << service << "] : " << buffer << endl;
+                cout << "[" << host << ":" << service << "] : " << buffer;
         }
     }
     else    // Exception
@@ -267,7 +273,7 @@ string handle_request_play(string PLID, string letter, string trial) {
             errCount++;
     }
     gameFile.close();
-    cout << "trial: " << trial << " | errCount: " << errCount << " | tr: " << tr << endl; // TODO: rm line
+    // cout << "trial: " << trial << " | errCount: " << errCount << " | tr: " << tr << endl; // TODO: rm line
     // "INV": The trial number is invalid
     if (tr != stoi(trial) - 1)
         return rep + "INV " + trial + "\n";
@@ -331,7 +337,7 @@ string handle_request_guess(string PLID, string guess, string trial) {
             errCount++;
     }
     gameFile.close();
-    cout << "trial: " << trial << " | tr: " << tr << " | errCount: " << errCount << " | maxErrors: " << maxErrors << endl; // TODO: rm line
+    // cout << "trial: " << trial << " | tr: " << tr << " | errCount: " << errCount << " | maxErrors: " << maxErrors << endl; // TODO: rm line
     // "INV": The trial number is invalid
     if (tr != stoi(trial) - 1)
         return rep + "INV " + trial + "\n";
@@ -389,7 +395,7 @@ string handle_request_reveal(string PLID) {
 void setup_socket_tcp(int sock, addrinfo *addr) {
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
-        while(bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
+        while (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding TCP socket");
         // Listen for incoming connections
         if (listen(sock, 10) < 0)
@@ -529,18 +535,23 @@ void send_file(int sock, string filePath) {
 // ==================================== Auxiliary Functions ========================================
 
 void handle_signal_gs(int sig) {
+    // Close the words file
+    if (wordsFile.is_open())
+        wordsFile.close();
+    // Free the allocated memory for the addresses
+    delete addrUDP;
+    delete addrTCP;
+    // Abort or segmentation fault
+    if (sig == SIGABRT || sig == SIGSEGV) {
+        cout << endl << "Core dumped." << endl;
+        exit(EXIT_FAILURE);
+    }
     // Ctrl + C
     if (sig == SIGINT) {
-        // Close the words file
-        if (wordsFile.is_open())
-            wordsFile.close();
+        cout << endl << "Closing process..." << endl;
         // Close all file descriptors (sockets and files)
         for (int i = 0; i < getdtablesize(); i++)
             close(i);
-        // Free the allocated memory for the addresses
-        delete addrUDP;
-        delete addrTCP;
-        cout << "Closing the server..." << endl;
         exit(0);
     }
 }

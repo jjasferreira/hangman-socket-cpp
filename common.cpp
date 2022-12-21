@@ -56,7 +56,7 @@ int create_socket(addrinfo *addr, string prog) {
         struct timeval tv;
         tv.tv_sec = 5;
         tv.tv_usec = 0;
-        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv)) < 0)
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
             throw runtime_error("Error setting socket options");
     }
     return sock;
@@ -90,8 +90,12 @@ string read_from_socket(int sock) {
 
     // Receive a message
     n = recvfrom(sock, buffer, 1024, 0, (struct sockaddr*) &address, &addrLen);
-    if (n == -1)
-        throw runtime_error("Error receiving UDP reply message.");
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            throw runtime_error("Timeout receiving UDP reply message.");
+        else
+            throw runtime_error("Error receiving UDP reply message.");
+    }
     buffer[n] = '\0';
     return buffer;
 }
@@ -331,6 +335,8 @@ void create_score_file(string PLID, string gamePath) {
     }
     gameFile.close();
     // The score file name should be score_PLID_DDMMYYYY_HHMMSS.txt
+    if (numTrials == 0)
+        throw runtime_error("Could not compute score for game with no trials.");
     score = numSuccess * 100 / numTrials;
     time_t t = time(0);
     tm* now = localtime(&t);
@@ -346,11 +352,12 @@ void create_score_file(string PLID, string gamePath) {
 }
 
 void move_to_past_games(string PLID, string status) {
-    string filePath = get_active_game(PLID);
-    if (filePath == "") // Exception
+    string gamePath = get_active_game(PLID);
+    if (gamePath == "") // Exception
         throw runtime_error("No active game found for this PLID.");
     // Create a score file based on this game
-    create_score_file(PLID, filePath);
+    if (status == "win")
+        create_score_file(PLID, gamePath);
     map<string, string> statusCodes = {{"win", "W"}, {"fail", "F"}, {"quit", "Q"}};
     string mkdirComm = "mkdir -p " + PLID + " ", mvComm = "mv ";
     // Get the current date and time
@@ -360,7 +367,7 @@ void move_to_past_games(string PLID, string status) {
         + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
     // Apply the commands: create a directory and move the file there
     mkdirComm += "server/games/" + PLID;
-    mvComm += filePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
+    mvComm += gamePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
     system(mkdirComm.c_str());
     system(mvComm.c_str());
     return;
