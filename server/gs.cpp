@@ -32,7 +32,7 @@ string handle_request_quit(string PLID);
 string handle_request_reveal(string PLID);
 
 // Bind the TCP socket to the Game Server address and wait for connections
-void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer)
+void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer);
 // Function that calls handlers depending on the TCP request
 void handle_request_tcp(string req, int nSock);
 // Handle the TCP requests from the Player and send the reply
@@ -66,6 +66,7 @@ string get_active_game(string PLID);
 string get_last_game(string PLID);
 scorelist* get_top_scores();
 
+bool debug = true;
 void dummy();   // TODO: rm
 
 // ============================================ Main ===============================================
@@ -106,35 +107,36 @@ int main(int argc, char *argv[]) {
     pid_t pid = fork();
     // Child process listens to TCP connections
     if (pid == 0) {
-        // while (true) {
-        //     struct sockaddr_in addrPlayer;
-        //     int sock = create_socket(addrTCP, progName);
-        //     setup_socket_tcp(sock, addrTCP, &addrPlayer);
+        while (true) {
+            struct sockaddr_in addrPlayer;
+            int sock = create_socket(addrTCP, progName);
+            setup_socket_tcp(sock, addrTCP, &addrPlayer);
 
-        //     char buffer[1024];
-        //     ssize_t bytes_read;
-        //     socklen_t addrLen = sizeof(addrPlayer);
-        //     while (true) {
-        //         int nSock;
-        //         // Accept connection to the server
-        //         if ((nSock = accept(sock, (struct sockaddr *) &addrPlayer, &addrLen)) == -1)
-        //             throw runtime_error("Error accepting connection to server.");
-        //         // Receive a message
-        //         bytes_read = read(nSock, buffer, 1024);
-        //         if (bytes_read == -1)
-        //             throw runtime_error("Error receiving TCP request message.");
-        //         buffer[bytes_read] = '\0';
-        //         pid_t pid_tcp = fork();
-        //         if (pid_tcp == 0) { // Child process
-        //             string req = buffer;
-        //             int status = handle_request_tcp(req, nSock);
-        //             close(nSock);
-        //             exit(0);
-        //         }
-        //         close(nSock);
-        //     }
-        //     close(sock);
-        // }
+            char buffer[1024];
+            ssize_t bytes_read;
+            socklen_t addrLen = sizeof(addrPlayer);
+            while (true) {
+                int nSock;
+                // Accept connection to the server
+                if ((nSock = accept(sock, (struct sockaddr *) &addrPlayer, &addrLen)) == -1)
+                    throw runtime_error("Error accepting connection to server.");
+                // Receive a message
+                bytes_read = read(nSock, buffer, 1024);
+                if (bytes_read == -1)
+                    throw runtime_error("Error receiving TCP request message.");
+                buffer[bytes_read] = '\0';
+                if (debug) cout << "Received TCP request: " << buffer << endl;
+                pid_t pid_tcp = fork();
+                if (pid_tcp == 0) { // Child process
+                    string req = buffer;
+                    handle_request_tcp(req, nSock);
+                    close(nSock);
+                    exit(0);
+                }
+                close(nSock);
+            }
+            close(sock);
+        }
     }
     // Parent process listens to UDP connections
     else {
@@ -412,12 +414,12 @@ string handle_request_reveal(string PLID) {
 // ================================== TCP Auxiliary Functions ======================================
 
 void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) {
-    socklen_t addrLen = sizeof(*addrPlayer);
-    ssize_t n;
+    // socklen_t addrLen = sizeof(*addrPlayer); TODO these aren't being used
+    // ssize_t n;
 
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
-        if (bind(sock, addr->ai_addr, addr->ai_addrLen) < 0)
+        if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding TCP socket");
         // Listen for incoming connections
         if (listen(sock, 10) < 0)
@@ -510,7 +512,7 @@ void handle_request_state(string PLID, int sock) {
         rep += (gamePath != "" ? "ACT " : "FIN ");
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to state request.");
-        filePath = create_state_file(PLID);
+        string filePath = create_state_file(PLID);
         send_file(sock, filePath);
         // Delete the temporary file
         if (remove(filePath.c_str()) != 0)
@@ -553,14 +555,86 @@ string get_hint_file(string PLID) {
 
 string create_state_file(string PLID) {
     string statePath, filePath = get_active_game(PLID);
+    bool activeGame = true;
+    char termState = ' ';
     // If there is no active game, find the last finished game
     if (filePath == "") {
         filePath = get_last_game(PLID);
+        activeGame = false;
+        // get the termination state of the last game
+        size_t lastUndScPos = filePath.find_last_of('_');
+        termState = filePath.substr(lastUndScPos + 1)[0];
         if (filePath == "") // Exception
             throw runtime_error("No games (active or finished) found for this Player.");
     }
     fstream file(filePath);
-    // TODO: Create a state file with the data read from the filePath file
+    if (!file.is_open()) // Exception
+        throw runtime_error("Error opening game file.");
+    string line, word, hint;
+    getline(file, line);
+    stringstream(line) >> word >> hint;
+
+    // Create a state file with a unique name
+    statePath = "server/temp/STATE_" + PLID + ".txt";
+    ofstream stateFile(statePath, ios::out | ios::trunc);
+
+    // Write the state to the opened file
+    // Write header
+    if (activeGame)
+        stateFile << "Active game found for player " << PLID << endl;
+    else
+        stateFile << "Last finalized game for player " << PLID << endl;
+    stateFile << "Word: " << word << "; Hint file: " << hint << endl;
+
+    // Compute transaction count
+    int transCount = 0;
+    while(getline(file, line)) {
+        if (line != "")
+            ++transCount;
+    }
+    stateFile << "--- Transactions found: " << transCount << " ---" << endl;
+    file.close();
+    file.open(filePath);
+    getline(file, line); // Skip the first line
+    // create set with letters from word
+    set<char> letters;
+    string wordProgress;
+    for (char c : word)
+        letters.insert(c);
+
+    // Set for guessed letters
+    set<char> guessed;
+
+    string cmd, pl;
+    while(getline(file, line)) {
+        stringstream(line) >> cmd >> pl;
+        if (cmd == "T") {
+            if (letters.find(pl[0]) != letters.end()) {
+                stateFile << "Letter trial: " << pl << " - TRUE" << endl;
+                guessed.insert(pl[0]);
+            }
+            else {
+                stateFile << "Letter trial: " << pl << " - FALSE" << endl;
+            }
+        } else if (cmd == "G") {
+            stateFile << "Word guess: " << pl << endl;
+        }
+    }
+    if (activeGame) {
+        // iterate through elements of set in order to build wordProgress indicator
+        string wordProgress;
+        for (char c : word) {
+            if (guessed.find(c) != guessed.end())
+                wordProgress += c;
+            else
+                wordProgress += '_';
+        }
+        stateFile << "Solved so far: " << wordProgress << endl;
+    }
+    else {
+        map<char, string> termStates = {{'W', "WIN"}, {'F', "FAIL"}, {'Q', "QUIT"}};
+        stateFile << "Termination: " << termStates[termState] << endl;
+    }
     return statePath;
 }
 
@@ -569,25 +643,33 @@ void send_file(int sock, string filePath) {
     size_t lastSlashPos = filePath.find_last_of('/');
     string fileName = filePath.substr(lastSlashPos + 1);
     string fileSize = to_string(get_file_size(filePath));
-
+    size_t fname_len = fileName.length(), fsize_len = fileSize.length();
+    fileName[fname_len] = '\0';
+    fileSize[fsize_len] = '\0';
     // Send the file name and size
-    if (send(sock, fileName.c_str(), fileName.length(), 0) < 0)
+    if (debug) cout << "Sending file name: " << fileName << endl;
+    if (send(sock, fileName.c_str(), fname_len + 1, 0) < 0)
         throw runtime_error("Error sending file name.");
-    if (send(sock, fileSize.c_str(), fileSize.length(), 0) < 0)
-        return runtime_error("Error sending file size.");
+    if (send(sock, fileSize.c_str(), fsize_len + 1, 0) < 0)
+        throw runtime_error("Error sending file size.");
         
     // Send the file contents
     FILE *fd;
-    ssize_t n, size;
+    ssize_t n, bytesRead, bytesSent;
     char buffer[1024];
     // Open the file with read permissions
     if ((fd = fopen(filePath.c_str(), "r")) == NULL)
         throw runtime_error("Error opening file.");
     // Send data from the file to the TCP socket
     memset(buffer, 0, 1024);
-    while ((n = fread(buffer, 1, 1024, fd)) > 0) {
-        if (send(sock, buffer, n, 0) < 0)
-            throw runtime_error("Error writing to file.");
+    while ((bytesRead = fread(buffer, 1, 1024, fd)) > 0) {
+        if (debug) cout << "Sending " << bytesRead << " bytes: " << buffer << endl;
+        bytesSent = 0;
+        while (bytesSent < bytesRead) {
+            if ((n = send(sock, buffer + bytesSent, bytesRead - bytesSent, 0)) < 0)
+                throw runtime_error("Error sending file.");
+            bytesSent += n;
+        }
         memset(buffer, 0, 1024);
     }
     // Close the file and print the result

@@ -103,16 +103,16 @@ string read_to_file(int sock, string mode) {
     char buffer[1024], c;
 
     // Read filename and filesize from socket and check if they are valid
-    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ' && c != '\0')
         fname += c;
     if (!is_valid_filename(fname)) {    // Exception
-        cout << "The file name is invalid." << endl << endl;
+        cout << "The file name is invalid. " << fname << endl << endl;
         return "FNERR";
     }
-    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ' && c != '\0')
         fsize += c;
     if (!is_valid_filesize(fsize)) {    // Exception
-        cout << "The file size is invalid." << endl << endl;
+        cout << "The file size is invalid." << fsize << endl << endl;
         return "FSERR";
     }
     size = stoi(fsize);
