@@ -360,7 +360,7 @@ void move_to_past_games(string PLID, string status) {
         + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
     // Apply the commands: create a directory and move the file there
     mkdirComm += "server/games/" + PLID;
-    mvComm += filePath + "server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
+    mvComm += filePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
     system(mkdirComm.c_str());
     system(mvComm.c_str());
     return;

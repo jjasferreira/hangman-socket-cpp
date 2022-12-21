@@ -256,7 +256,7 @@ string handle_request_play(string PLID, string letter, string trial) {
         stringstream(line) >> code >> play;
         if (code == "T") {
             // "DUP": The played letter was sent in a previous trial
-            if (play == letter && tr != stoi(trial) - 1)
+            if (play == letter && tr != stoi(trial))
                 return rep + "DUP " + to_string(stoi(trial) - 1) + "\n";
             // Remove from set. If the letter is not in the word, increase the error count 
             else if (letters.erase(play[0]) == 0)
@@ -389,7 +389,7 @@ string handle_request_reveal(string PLID) {
 void setup_socket_tcp(int sock, addrinfo *addr) {
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
-        if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
+        while(bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding TCP socket");
         // Listen for incoming connections
         if (listen(sock, 10) < 0)
