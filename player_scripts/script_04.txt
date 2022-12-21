@@ -1,55 +1,17 @@
 start 100001
-quit
-start 100002
-quit
-start 100003
-quit
-start 100004
-quit
-start 100005
-quit
-start 100006
-quit
-start 100007
-quit
-start 100008
-quit
-start 100009
-quit
-start 100010
-quit
-start 100011
-quit
-start 100012
-quit
-start 100013
-quit
-start 100014
-quit
-start 100015
-quit
-start 100016
-quit
-start 100017
-quit
-start 100018
-quit
-start 100019
-quit
-start 100020
-quit
-start 100021
-quit
-start 100022
-quit
-start 100023
-quit
-start 100024
-quit
-start 100025
-quit
-start 100026
-quit
-start 100027
-quit
+play a
+play b
+play c
+play d
+play e
+play f
+play g
+play h
+play i
+play j
+play k
+play l
+play m
+play n
+play r
 exit
