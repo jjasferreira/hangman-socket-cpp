@@ -8,43 +8,6 @@ bool verbose = false;               // Verbose mode
 string wordsFileName;               // File that stores the words and their hint file
 ifstream wordsFile;                 // Input file stream for the words file
 
-void dummy();
-
-string read_from_socket_udp(int sock, addrinfo *addr, struct sockaddr_in *addrPlayer);
-void write_to_socket_udp(int sock, struct sockaddr_in addrPlayer, string rep);
-
-int handle_request_tcp(string req, int nsock);
-int handle_request_scoreboard(int nsock);
-int handle_request_status(string PLID, int nsock);
-int handle_request_hint(string PLID, int nsock);
-
-
-// Function that calls handlers depending on the request
-string handle_request_udp(string req);
-
-// Handle the requests from the Player
-string handle_request_start(string PLID);
-string handle_request_play(string PLID, string letter, string trial);
-string handle_request_guess(string PLID, string guess, string trial);
-string handle_request_quit(string PLID);
-string handle_request_reveal(string PLID);
-
-// Handle the signals from the terminal
-void handle_signal_gs(int sig);
-
-// Get the maximum number of errors allowed for a word of the given size
-int calculate_max_errors(int len);
-
-// Check if the game file has got moves
-bool has_moves(string fname);
-
-void move_to_past_games(string PLID, string status);
-string create_top_score_file(struct scorelist* top_scores);
-void create_score_file(string PLID, string gamefile);
-string create_status_file(string PLID);
-string find_hint(string PLID);
-string find_letter_positions(string word, char letter);
-
 // Struct that saves the top 10 scores
 struct scorelist {
     int score[10];
@@ -55,11 +18,55 @@ struct scorelist {
     int numScores;
 };
 
+// Read a request from an UDP socket and from a certain Player address.
+string read_from_socket_udp(int sock, addrinfo *addr, struct sockaddr_in *addrPlayer);
+// Write a reply to an UDP socket using the Player address.
+void write_to_socket_udp(int sock, struct sockaddr_in addrPlayer, string rep);
+// Function that calls handlers depending on the UDP request
+string handle_request_udp(string req);
+// Handle the UDP requests from the Player
+string handle_request_start(string PLID);
+string handle_request_play(string PLID, string letter, string trial);
+string handle_request_guess(string PLID, string guess, string trial);
+string handle_request_quit(string PLID);
+string handle_request_reveal(string PLID);
+
+// Bind the TCP socket to the Game Server address and wait for connections
+void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer)
+// Function that calls handlers depending on the TCP request
+void handle_request_tcp(string req, int nSock);
+// Handle the TCP requests from the Player and send the reply
+void handle_request_scoreboard(int nSock);
+void handle_request_state(string PLID, int nSock);
+void handle_request_hint(string PLID, int nSock);
+// Send a file to the Player through the TCP socket
+void send_file(int sock, string filePath);
+// Get the size of a file on the given path
+long get_file_size(string filePath);
+
+// Handle the signals from the terminal
+void handle_signal_gs(int sig);
+
+// Get the maximum number of errors allowed for a word of the given size
+int calculate_max_errors(int len);
+
+// Check if the game file has got moves
+bool has_moves(string filePath);
+
+void move_to_past_games(string PLID, string status);
+string create_scoreboard_file(struct scorelist* top_scores);
+void create_score_file(string PLID, string gamefile);
+string create_state_file(string PLID);
+string get_hint_file(string PLID);
+string get_letter_positions(string word, char letter);
+
 string create_game_file(string PLID);
 string get_word();
-string find_active_game(string PLID);
-string find_last_game(string PLID);
-scorelist* find_top_scores();
+string get_active_game(string PLID);
+string get_last_game(string PLID);
+scorelist* get_top_scores();
+
+void dummy();   // TODO: rm
 
 // ============================================ Main ===============================================
 
@@ -106,25 +113,25 @@ int main(int argc, char *argv[]) {
 
         //     char buffer[1024];
         //     ssize_t bytes_read;
-        //     socklen_t addrlen = sizeof(addrPlayer);
+        //     socklen_t addrLen = sizeof(addrPlayer);
         //     while (true) {
-        //         int nsock;
+        //         int nSock;
         //         // Accept connection to the server
-        //         if ((nsock = accept(sock, (struct sockaddr *) &addrPlayer, &addrlen)) == -1)
+        //         if ((nSock = accept(sock, (struct sockaddr *) &addrPlayer, &addrLen)) == -1)
         //             throw runtime_error("Error accepting connection to server.");
         //         // Receive a message
-        //         bytes_read = read(nsock, buffer, 1024);
+        //         bytes_read = read(nSock, buffer, 1024);
         //         if (bytes_read == -1)
         //             throw runtime_error("Error receiving TCP request message.");
         //         buffer[bytes_read] = '\0';
         //         pid_t pid_tcp = fork();
         //         if (pid_tcp == 0) { // Child process
         //             string req = buffer;
-        //             int status = handle_request_tcp(req, nsock);
-        //             close(nsock);
+        //             int status = handle_request_tcp(req, nSock);
+        //             close(nSock);
         //             exit(0);
         //         }
-        //         close(nsock);
+        //         close(nSock);
         //     }
         //     close(sock);
         // }
@@ -174,11 +181,11 @@ string read_from_socket_udp(int sock, addrinfo *addr, sockaddr_in* addrPlayer) {
 }
 
 void write_to_socket_udp(int sock, sockaddr_in addrPlayer, string rep) {
-    socklen_t addrlen = sizeof(addrPlayer);
+    socklen_t addrLen = sizeof(addrPlayer);
     ssize_t n;
 
     // UDP connection reply
-    n = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrlen);
+    n = sendto(sock, rep.c_str(), rep.length(), 0, (struct sockaddr *)&addrPlayer, addrLen);
     if ((int)n == -1 || (int)n != (int)rep.length())
         throw runtime_error("Error sending UDP reply message.");
 }
@@ -221,7 +228,7 @@ string handle_request_udp(string req) {
 
 string handle_request_start(string PLID) {
     string rep = "RSG ";
-    string fname = find_active_game(PLID);
+    string filePath = get_active_game(PLID);
 
     // "ERR": The PLID or the syntax was invalid
     // TODO: check the syntax: size of whole request message string is 10
@@ -229,11 +236,11 @@ string handle_request_start(string PLID) {
     if (!is_valid_plid(PLID))
         return rep + "ERR\n";
     // "NOK": The Player has an ongoing game: an active file with moves
-    if (fname != "" && has_moves(fname))
+    if (filePath != "" && has_moves(filePath))
         return rep += "NOK\n";
     // "OK": The Player can start a new game
-    if (fname != "" && !has_moves(fname)) {
-        ifstream file(fname);
+    if (filePath != "" && !has_moves(filePath)) {
+        ifstream file(filePath);
         string line, word;
         getline(file, line);
         stringstream ss(line);
@@ -247,14 +254,14 @@ string handle_request_start(string PLID) {
 
 string handle_request_play(string PLID, string letter, string trial) {
     string rep = "RLG ";
-    string fname = find_active_game(PLID);
+    string filePath = get_active_game(PLID);
 
     // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
-    if (!is_valid_plid(PLID) || !is_valid_letter(letter) || !is_valid_integer(trial) || fname == "")
+    if (!is_valid_plid(PLID) || !is_valid_letter(letter) || !is_valid_integer(trial) || filePath == "")
         return rep + "ERR\n";
     // Open player game file, get the word and the number of letters and errors
     string line, word, pos;
-    fstream file(fname);
+    fstream file(filePath);
     getline(file, line);
     stringstream(line) >> word;
     if (word.empty())   // Exception
@@ -289,7 +296,7 @@ string handle_request_play(string PLID, string letter, string trial) {
     if (tr != stoi(trial) - 1)
         return rep + "INV " + trial + "\n";
     // Write to file
-    file.open(fname, ios::out | ios::app);
+    file.open(filePath, ios::out | ios::app);
     file << "T " << letter << endl;
     file.close();
  
@@ -300,7 +307,7 @@ string handle_request_play(string PLID, string letter, string trial) {
             move_to_past_games(PLID, "win");
             return rep + "WIN " + trial + "\n";
         }
-        return rep += "OK " + trial + " " + find_letter_positions(word, letter[0]);
+        return rep += "OK " + trial + " " + get_letter_positions(word, letter[0]);
     }
     // "OVR": The Player has lost the game
     if (errCount + 1 == maxErrors) {
@@ -313,14 +320,14 @@ string handle_request_play(string PLID, string letter, string trial) {
 
 string handle_request_guess(string PLID, string guess, string trial) {
     string rep = "RWG ";
-    string fname = find_active_game(PLID);
+    string filePath = get_active_game(PLID);
 
     // "ERR": The PLID is invalid, there is no ongoing game or the syntax is incorrect
-    if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || fname == "")
+    if (!is_valid_plid(PLID) || !is_valid_word(guess) || !is_valid_integer(trial) || filePath == "")
         return rep + "ERR\n";
     // Open Player game file and get the word and the maximum number of errors
     string line, word;
-    fstream file(fname);
+    fstream file(filePath);
     getline(file, line);
     stringstream(line) >> word;
     int numLetters = word.length();
@@ -353,7 +360,7 @@ string handle_request_guess(string PLID, string guess, string trial) {
     if (tr != stoi(trial) - 1)
         return rep + "INV " + trial + "\n";
     // Write guess to file
-    file.open(fname, ios::out | ios::app);
+    file.open(filePath, ios::out | ios::app);
     file << "G " << guess << endl;
     file.close();
     // "WIN": The word guess was successful
@@ -377,7 +384,7 @@ string handle_request_quit(string PLID) {
     if (!is_valid_plid(PLID))
         return rep + "ERR\n";
     // "NOK": There is no ongoing game for this Player
-    if (find_active_game(PLID) == "")
+    if (get_active_game(PLID) == "")
         return rep + "NOK\n";
     // "OK": The game was successfully terminated
     move_to_past_games(PLID, "quit");
@@ -386,15 +393,15 @@ string handle_request_quit(string PLID) {
 
 string handle_request_reveal(string PLID) {
     string rep = "RRV ";
-    string fname = find_active_game(PLID);
+    string filePath = get_active_game(PLID);
 
     // "ERR": The PLID is invalid or there is no ongoing game for this Player
-    if (!is_valid_plid(PLID) || fname == "")
+    if (!is_valid_plid(PLID) || filePath == "")
         return rep + "ERR\n";
     // "word": The game was successfully terminated
     fstream file;
     string line, word;
-    file.open(fname);
+    file.open(filePath);
     getline(file, line);
     stringstream(line) >> word;
     file.close();
@@ -405,13 +412,14 @@ string handle_request_reveal(string PLID) {
 // ================================== TCP Auxiliary Functions ======================================
 
 void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) {
-    socklen_t addrlen = sizeof(*addrPlayer);
+    socklen_t addrLen = sizeof(*addrPlayer);
     ssize_t n;
 
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
-        if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
+        if (bind(sock, addr->ai_addr, addr->ai_addrLen) < 0)
             throw runtime_error("Error binding TCP socket");
+        // Listen for incoming connections
         if (listen(sock, 10) < 0)
             throw runtime_error("Error listening on TCP socket");
     }
@@ -419,106 +427,153 @@ void setup_socket_tcp(int sock, addrinfo *addr, struct sockaddr_in* addrPlayer) 
         throw runtime_error("Invalid address type.");
 }
  
-int handle_request_tcp(string req , int sock) {
-    // TCP commands may be GSB, GHL or STA
+void handle_request_tcp(string req, int sock) {
     string comm, PLID;
     stringstream ss(req);
     ss >> comm;
-    if (comm == "GSB") {
-        return handle_request_scoreboard(sock);
-    }
+    // Scoreboard
+    if (comm == "GSB")
+        handle_request_scoreboard(sock);
+    // Hint
     else if (comm == "GHL") {
         ss >> PLID;
-        return handle_request_hint(PLID, sock);
+        handle_request_hint(PLID, sock);
     }
+    // State
     else if (comm == "STA") {
         ss >> PLID;
-        return handle_request_status(PLID, sock);
+        handle_request_state(PLID, sock);
     }
-    else
-        throw runtime_error("Invalid TCP request.");
-    return 1;
-}
-
-int handle_request_scoreboard(int sock) {
-    // RSB status, where status is OK if there have been finished games, otherwise EMPTY
-    struct scorelist *scoreboard = find_top_scores();
-    string scoreboard_file = create_top_score_file(scoreboard);
-    int chunkSize = 1024;
-    // send("RSB OK")
-    int status = send_file(sock, scoreboard_file, chunkSize);
-    return status != -1 ? 0 : -1;
-}
-
-int handle_request_hint(string PLID, int sock) {
-    // RHL status, where status is OK if the hint file exists, otherwise NOK
-    string hint = find_hint(PLID);
-    int chunkSize = 1024;
-    int status = send_file(sock, hint, chunkSize);
-    return status != -1 ? 0 : -1;
-}
-
-int handle_request_status(string PLID, int sock) {
-    // RST status, where status is ACT if there is an ongoing game, FIN if there is a finished game, otherwise NOK
-    string status = create_status_file(PLID);
-    int chunkSize = 1024;
-    // send 
-    int status = send_file(sock, status, chunkSize);
-    return status != -1 ? 0 : -1;
-}
-
-string create_status_file(string PLID) {
-    string fname = find_active_game(PLID), sfile_name;
-    if (fname == "") { // no active game
-        fname = find_last_game(PLID);
-        if (fname == "") // no past games
-            throw runtime_error("Invalid PLID.");
+    else {  // Exception
+        if (send(sock, "ERR\n", 4, 0) < 0)
+            throw runtime_error("Error sending TCP reply to unknown command.");
     }
-    fstream file(fname);
-    
-    return sfile_name;
 }
 
+void handle_request_scoreboard(int sock) {
+    string rep = "RSB ";
+    struct scorelist *scoreBoard = get_top_scores();
 
-string find_hint(string PLID) {
-    string fname = find_active_game(PLID);
-    fstream gfile;
-    gfile.open(fname);
+    // "EMPTY" : There are no finished games yet
+    if (scoreBoard == NULL) {
+        rep += "EMPTY\n";
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to scoreboard request.");
+    }
+    // "OK": There are finished games and the scoreboard is sent
+    else {
+        rep += "OK ";
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to scoreboard request.");
+        string filePath = create_scoreboard_file(scoreBoard);
+        send_file(sock, filePath);
+        // Delete the temporary file
+        if (remove(filePath.c_str()) != 0)
+            throw runtime_error("Error deleting temporary scoreboard file.");
+    }
+}
+
+void handle_request_hint(string PLID, int sock) {
+    string rep = "RHL ";
+    string filePath = get_hint_file(PLID);
+
+    // "NOK": There is no hint file, or some other problem
+    if (filePath == "") {
+        rep += "NOK\n";
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to hint request.");
+    }
+    // "OK": The hint file is available and it is sent
+    else {
+        rep += "OK ";
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to hint request.");
+        send_file(sock, filePath);
+        // Delete the temporary file
+        if (remove(filePath.c_str()) != 0)
+            throw runtime_error("Error deleting temporary hint file.");
+    }
+}
+
+void handle_request_state(string PLID, int sock) {
+    string rep = "RST ";
+    string gamePath = get_active_game(PLID);
+
+    // "NOK": There are no games (active or finished) for this Player, or some other problem
+    if (gamePath == "" && get_last_game(PLID) == "") {
+        rep += "NOK\n";
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to state request.");
+    }
+    else {
+        // "ACT": There is an active game / "FIN": There are only finished games for this Player
+        rep += (gamePath != "" ? "ACT " : "FIN ");
+        if (send(sock, rep.c_str(), rep.length(), 0) < 0)
+            throw runtime_error("Error sending TCP reply to state request.");
+        filePath = create_state_file(PLID);
+        send_file(sock, filePath);
+        // Delete the temporary file
+        if (remove(filePath.c_str()) != 0)
+            throw runtime_error("Error deleting temporary state file.");
+    }
+}
+
+string create_scoreboard_file(struct scorelist *sb) {
+    // Create a scoreboard file with a unique name
+    pid_t pid = getpid();
+    string filePath = "server/temp/TOPSCORES_" + to_string(pid) + ".txt";
+    ofstream file(filePath, ios::out | ios::trunc);
+    // Write the scoreboard to the opened file
+    file << "-------------------------------- TOP 10 SCORES --------------------------------" << endl << endl;
+    file << "    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS" << endl << endl;
+    for (int i = 0; i < sb->numScores; ++i) {
+        file << left << " " << setw(1) << i + 1 << " - " << setw(3) << sb->score[i] << "  "
+                << setw(8) << sb->PLID[i] << setw(38) << sb->word[i] << "  "
+                << setw(14) << sb->numSuccess[i] << sb->numTrials[i] << endl;
+    }
+    // Close the file and return its path
+    file.close();
+    return filePath;
+}
+
+string get_hint_file(string PLID) {
+    string filePath = get_active_game(PLID);
+
+    // If there is no active game, return an empty string
+    if (filePath == "")
+        return "";
+    // If there is an active game, return the path to the hint file
+    ifstream file(filePath);
     string line, word, hint;
-    getline(gfile, line);
+    getline(file, line);
     stringstream(line) >> word >> hint;
-    gfile.close();
+    file.close();
     return "server/images/" + hint;
 }
 
-string create_top_score_file(struct scorelist *scoreboard) {
-    pid_t pid = getpid();
-    string filename = "server/temp/TOPSCORES_" + to_string(pid) + ".txt";
-    ofstream file(filename, ios::out | ios::trunc);
-    file << "-------------------------------- TOP 10 SCORES --------------------------------" << endl << endl;
-    file << "    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS" << endl << endl;
-    for (int i = 0; i < scoreboard->numScores; ++i) {
-        file << std::left << " " << std::setw(1) << i + 1 << " - " << std::setw(3) << scoreboard->score[i] << "  "
-                << std::setw(8) << scoreboard->PLID[i] << std::setw(38) << scoreboard->word[i] << "  "
-                << std::setw(14) << scoreboard->numSuccess[i] << scoreboard->numTrials[i]
-                << std::endl;   
+string create_state_file(string PLID) {
+    string statePath, filePath = get_active_game(PLID);
+    // If there is no active game, find the last finished game
+    if (filePath == "") {
+        filePath = get_last_game(PLID);
+        if (filePath == "") // Exception
+            throw runtime_error("No games (active or finished) found for this Player.");
     }
-
-    file.close();
-    
-    return filename;
+    fstream file(filePath);
+    // TODO: Create a state file with the data read from the filePath file
+    return statePath;
 }
 
-void send_file(int sock, string fpath, int chunkSize) {
+void send_file(int sock, string filePath) {
     // Extract the substring after the last slash
-    size_t lastSlashPos = fpath.find_last_of('/');
-    string fname = fpath.substr(lastSlashPos + 1);
-    string fsize = to_string(get_file_size(fpath));
+    size_t lastSlashPos = filePath.find_last_of('/');
+    string fileName = filePath.substr(lastSlashPos + 1);
+    string fileSize = to_string(get_file_size(filePath));
 
     // Send the file name and size
-    if (send(sock, fname.c_str(), fname.length(), 0) < 0)
+    if (send(sock, fileName.c_str(), fileName.length(), 0) < 0)
         throw runtime_error("Error sending file name.");
-    if (send(sock, fsize.c_str(), fsize.length(), 0) < 0)
+    if (send(sock, fileSize.c_str(), fileSize.length(), 0) < 0)
         return runtime_error("Error sending file size.");
         
     // Send the file contents
@@ -526,7 +581,7 @@ void send_file(int sock, string fpath, int chunkSize) {
     ssize_t n, size;
     char buffer[1024];
     // Open the file with read permissions
-    if ((fd = fopen(fpath.c_str(), "r")) == NULL)
+    if ((fd = fopen(filePath.c_str(), "r")) == NULL)
         throw runtime_error("Error opening file.");
     // Send data from the file to the TCP socket
     memset(buffer, 0, 1024);
@@ -539,17 +594,16 @@ void send_file(int sock, string fpath, int chunkSize) {
     fclose(fd);
 }
 
-
-long get_file_size(string fname) {
+long get_file_size(string filePath) {
     struct stat statBuf;
-    int res = stat(fname.c_str(), &statBuf);
+    int res = stat(filePath.c_str(), &statBuf);
     return res == 0 ? statBuf.st_size : -1;
 }
 
 // ========================================= Filesystem ============================================
 
-bool has_moves(string fname) {
-    ifstream file(fname);
+bool has_moves(string filePath) {
+    ifstream file(filePath);
     string line;
     // If we are able to read a line, check if there is another line
     if (getline(file, line)) {
@@ -560,12 +614,12 @@ bool has_moves(string fname) {
 }
 
 void move_to_past_games(string PLID, string status) {
-    string fname = find_active_game(PLID), date;
+    string filePath = get_active_game(PLID), date;
     
-    if (fname == "")
+    if (filePath == "")
         throw runtime_error("No active game found for this PLID");
 
-    create_score_file(PLID, fname);
+    create_score_file(PLID, filePath);
 
     map<string, string> status_codes = { {"win", "W"}, {"fail", "F"}, {"quit", "Q"} };
     string mkdir_command = "mkdir -p " + PLID, mv_command = "mv ";
@@ -576,7 +630,7 @@ void move_to_past_games(string PLID, string status) {
     to_string(now->tm_mday) + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
     
     mkdir_command += " server/games/" + PLID;
-    mv_command += fname + " server/games/" + PLID + "/" + date + "_" + status_codes[status] + ".txt";
+    mv_command += filePath + " server/games/" + PLID + "/" + date + "_" + status_codes[status] + ".txt";
     
     system(mkdir_command.c_str());
     system(mv_command.c_str());
@@ -635,13 +689,13 @@ void create_score_file(string PLID, string gamefile) {
 }
 
 string create_game_file(string PLID) {
-    string info, word, hint, fname = "server/games/GAME_" + PLID + ".txt";
-    ofstream file(fname, ios::in | ios::out | ios::trunc);
+    string info, word, hint, filePath = "server/games/GAME_" + PLID + ".txt";
+    ofstream file(filePath, ios::in | ios::out | ios::trunc);
     int numLetters, maxErrors;
     // TODO: add exception (could not open file)
 
     // Choose word and write it and its hint file to the game file
-    // file.open(fname, ios::out | ios::in | ios::trunc);
+    // file.open(filePath, ios::out | ios::in | ios::trunc);
 
     info = get_word();
     file << info << endl;
@@ -682,28 +736,28 @@ string get_word() {
     return word + " " + hint;
 }
 
-string find_active_game(string PLID) {
-    string fname = "server/games/GAME_" + PLID + ".txt";
-    ifstream file(fname);
+string get_active_game(string PLID) {
+    string filePath = "server/games/GAME_" + PLID + ".txt";
+    ifstream file(filePath);
     if (!file.good())
         return "";
     else
-        return fname;
+        return filePath;
 }
 
-string find_last_game(string PLID) {
+string get_last_game(string PLID) {
     struct dirent **filelist;
-    string fname, dname = "server/games/" + PLID + "/";
+    string filePath, dir = "server/games/" + PLID + "/";
     bool found;
     // Scan the directory for the last game
-    int numEntries = scandir(dname.c_str(), &filelist, 0, alphasort);
+    int numEntries = scandir(dir.c_str(), &filelist, 0, alphasort);
     if (numEntries <= 0)
         return "";
     else {
         while (numEntries--) {
             // Check if the file is a regular file
             if (filelist[numEntries]->d_type == DT_REG) {
-                fname = dname + filelist[numEntries]->d_name;
+                filePath = dir + filelist[numEntries]->d_name;
                 found = true;
             }
             delete filelist[numEntries];
@@ -712,23 +766,23 @@ string find_last_game(string PLID) {
         }
         delete filelist;
     }
-    return fname;
+    return filePath;
 }
 
-scorelist* find_top_scores() {
+scorelist* get_top_scores() {
     struct dirent **filelist;
     struct scorelist *list = new scorelist;
-    string fname, dname = "server/scores/";
+    string filePath, dir = "server/scores/";
     // Scan the directory for the top 10 scores
-    int i = 0, numEntries = scandir(dname.c_str(), &filelist, 0, alphasort);
+    int i = 0, numEntries = scandir(dir.c_str(), &filelist, 0, alphasort);
     if (numEntries < 0)
         return NULL;
     else {
         while (numEntries--) {
             // Check if the file is a regular file
             if (filelist[numEntries]->d_type == DT_REG) {
-                fname = dname + filelist[numEntries]->d_name;
-                ifstream file(fname);
+                filePath = dir + filelist[numEntries]->d_name;
+                ifstream file(filePath);
                 if (file.is_open()) {
                     string line;
                     getline(file, line);
@@ -749,7 +803,7 @@ scorelist* find_top_scores() {
 
 // ==================================== Auxiliary Functions ========================================
 
-string find_letter_positions(string word, char letter) {
+string get_letter_positions(string word, char letter) {
     string pos;
     int occ = 0;
     int len = word.length();
@@ -791,5 +845,5 @@ void handle_signal_gs(int sig) {
 }
 
 void dummy() {
-    // Do nothing
+    // Do nothing TODO: rm
 }
