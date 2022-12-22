@@ -127,8 +127,8 @@ int main(int argc, char *argv[]) {
             int sock = create_socket(addrUDP, progName);
             string req = read_from_socket_udp(sock, addrUDP, &addrPlayer);
             string rep = handle_request_udp(req);
-            if (verbose)    // TODO: rm
-                cout << rep << endl;
+            if (verbose)
+                cout << "[gs] : " << rep << endl;
             write_to_socket_udp(sock, addrPlayer, rep);
             close(sock);
         }
@@ -145,9 +145,13 @@ string read_from_socket_udp(int sock, addrinfo *addr, sockaddr_in* addrPlayer) {
 
     // UDP connection request
     if (addr->ai_socktype == SOCK_DGRAM) {
+        // Add the SO_REUSEADDR flag to avoid binding socket errors
+        int optval = 1;
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
+            throw runtime_error("Error setting socket options.");
         if (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
             throw runtime_error("Error binding UDP socket");
-        // check number of bytes read, end buffer at that location
+        // Check number of bytes read, end buffer at that location
         n = recvfrom(sock, buffer, 1024, 0, (struct sockaddr*)addrPlayer, &addrLen);
         if (n <= 0)
             throw runtime_error("Error reading from UDP socket");
@@ -222,8 +226,6 @@ string handle_request_start(string PLID) {
     string gamePath = get_active_game(PLID);
 
     // "ERR": The PLID or the syntax was invalid
-    // TODO: check the syntax: size of whole request message string is 10
-    // gotta do the same for every other handle_request
     if (!is_valid_plid(PLID))
         return rep + "ERR\n";
     // "NOK": The Player has an ongoing game: an active file with moves
@@ -288,7 +290,6 @@ string handle_request_play(string PLID, string letter, string trial) {
             errCount++;
     }
     gameFile.close();
-    // cout << "trial: " << trial << " | errCount: " << errCount << " | tr: " << tr << endl; // TODO: rm line
     // "INV": The trial number is invalid
     if (tr != stoi(trial) - 1 && !rpt)
         return rep + "INV " + trial + "\n";
@@ -364,7 +365,6 @@ string handle_request_guess(string PLID, string guess, string trial) {
             errCount++;
     }
     gameFile.close();
-    // cout << "trial: " << trial << " | tr: " << tr << " | errCount: " << errCount << " | maxErrors: " << maxErrors << endl; // TODO: rm line
     // "INV": The trial number is invalid
     if (tr != stoi(trial) - 1 && !rpt)
         return rep + "INV " + trial + "\n";
@@ -481,8 +481,8 @@ void handle_request_scoreboard(int sock) {
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to scoreboard request.");
         string filePath = create_scoreboard_file(scoreBoard);
-        if (verbose)    // TODO: rm
-            cout << rep;
+        if (verbose)
+            cout << "[gs] : " << rep << endl;
         send_file(sock, filePath);
         // Delete the temporary file
         if (remove(filePath.c_str()) != 0)
@@ -505,8 +505,8 @@ void handle_request_hint(string PLID, int sock) {
         rep += "OK ";
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to hint request.");
-        if (verbose)    // TODO: rm
-            cout << rep;
+        if (verbose)
+            cout << "[gs] : " << rep << endl;
         send_file(sock, filePath);
     }
 }
@@ -527,8 +527,8 @@ void handle_request_state(string PLID, int sock) {
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to state request.");
         string filePath = create_state_file(PLID);
-        if (verbose)    // TODO: rm
-            cout << rep;
+        if (verbose)
+                cout << "[gs] : " << rep << endl;
         send_file(sock, filePath);
         // Delete the temporary file
         if (remove(filePath.c_str()) != 0)
@@ -546,7 +546,7 @@ void send_file(int sock, string filePath) {
         throw runtime_error("Error sending file name.");
     if (send(sock, fileSize.c_str(), fileSize.length(), 0) < 0)
         throw runtime_error("Error sending file size.");
-    if (verbose)    // TODO: rm this if clause
+    if (verbose)
         cout << fileName << fileSize << "<DATA>" << endl << endl;  
     // Send the file contents
     FILE *fd;
