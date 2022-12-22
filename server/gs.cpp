@@ -608,6 +608,8 @@ void handle_signal_gs(int sig) {
         // Remove all active games if there are any
         string comm = "rm -f server/games/GAME_* 2> /dev/null";
         system(comm.c_str());
+        comm = "rm -rf server/temp 2> /dev/null";
+        system(comm.c_str());
         // Close all file descriptors (sockets and files)
         for (int i = 0; i < getdtablesize(); i++)
             close(i);

@@ -14,6 +14,12 @@ We have decided to strictly follow the project specifications. In cases where th
 
 In the `aux.h` file, we have put the auxiliary functions that are made use of in both the client and server files, since the project dimension did not, in our opinion, call for further division into more files, which would decrease readability. We also rewrote portions of the auxiliary functions that were provided so that they would be more in line with the C++ programming style.
 
+Occasionally, we use the `server/temp` directory in order to have a place to store the scoreboard and state files before sending them. This directory is deleted when the server stops executing and the same applies to the active games (files starting with "GAME_") left unfinished inside the directory `server/games`.
+
+The hint images for the words in the words file must be stored inside the `server/images`.
+
+To stop the **Game Server** from running, you must press `Ctrl+C` while in the terminal. This sends the _SIGINT_ signal, which is handled by a function that we defined to close the **Game Server** safely. The same logic applies to the executable of the **Player**.
+
 Sockets are particularly useful to processes running separately and that need to communicate with each other, exchanging data.
 You can run the **Player** and **Game Server** wherever you want, as long as you know the IP of the machine running the **Game Server** and establish a known port.
 
@@ -23,7 +29,7 @@ You can run the **Player** and **Game Server** wherever you want, as long as you
 
 When testing our **Game Server** executable with the provided scripts hosted in `tejo.tecnico.ulisboa.pt:59000`, we often encountered some communication errors when analyzing the HTML. However, after some modifications, this problem seems to have subsided, although we cannot be sure it is gone entirely. This might have been happening because the reply to a request never made it to the **Player** and therefore was not processed by it, or their next request is stuck in the socket.
 
-Either way, we believe this quirk was not due to any mistake on our part, seeing as we ensure on our side that the server reply is sent. In any client/server application, the onus falls on the client to ensure that the server reply did not get lost, by resending the request if it is lost. This logic cannot be implemented, of course, server-side, because the server has no way of knowing whether the packet was lost or not if the player doesn't resend the request.
+Either way, we believe this quirk was not due to any mistake on our part, seeing as we ensure on our side that the server reply is sent. In any client/server application, the onus falls on the client to ensure that the server reply did not get lost, by resending the request if it is lost. This logic cannot be implemented, of course, server-side, because the server has no way of knowing whether the packet was lost or not if the client doesn't resend the request.
 
 ---
 
