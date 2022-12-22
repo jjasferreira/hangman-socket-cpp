@@ -1,4 +1,4 @@
-#include "common.h"
+#include "aux.h"
 
 bool is_valid_port(const string &arg) {
     return all_of(arg.begin(), arg.end(), ::isdigit) && (stoi(arg) >= 1024) && (stoi(arg) <= 65536);
@@ -155,11 +155,11 @@ string get_letter_positions(string word, char letter) {
     int len = word.length();
     for (int i = 0; i < len; i++) {
         if (word[i] == letter) {
-            pos += to_string(i + 1) + " ";
+            pos += " " + to_string(i + 1);
             occ++;
         }
     }
-    return to_string(occ) + " " + pos;
+    return to_string(occ) + pos;
 }
 
 int calculate_max_errors(int len) {
@@ -174,6 +174,9 @@ int calculate_max_errors(int len) {
 }
 
 string create_game_file(string PLID, ifstream &wordsFile) {
+    // Create the directory server/games if it does not exist
+    if (mkdir("server/games", 0777) == -1 && errno != EEXIST) // Exception
+        throw runtime_error("Error creating directory server/games.");
     int numLetters, maxErrors;
     string info, word, hint;
     string filePath = "server/games/GAME_" + PLID + ".txt";
@@ -204,6 +207,9 @@ bool has_moves(string gamePath) {
 }
 
 string create_scoreboard_file(struct scorelist *sb) {
+    // Create the directory server/temp if it does not exist
+    if (mkdir("server/temp", 0777) == -1 && errno != EEXIST) // Exception
+        throw runtime_error("Error creating directory server/temp.");
     // Create a scoreboard file with a unique name
     pid_t pid = getpid();
     string filePath = "server/temp/TOPSCORES_" + to_string(pid) + ".txt";
@@ -212,9 +218,9 @@ string create_scoreboard_file(struct scorelist *sb) {
     file << "-------------------------------- TOP 10 SCORES --------------------------------" << endl << endl;
     file << "    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS" << endl << endl;
     for (int i = 0; i < sb->numScores; ++i) {
-        file << left << " " << setw(1) << i + 1 << " - " << setw(3) << sb->score[i] << "  "
-                << setw(8) << sb->PLID[i] << setw(38) << sb->word[i] << "  "
-                << setw(14) << sb->numSuccess[i] << sb->numTrials[i] << endl;
+    file << left << setfill(' ') << setw(2) << right << i + 1 << left << " - " << setw(3) << sb->score[i] << "  "
+        << setw(8) << sb->PLID[i] << setw(38) << sb->word[i] << "  "
+        << setw(14) << sb->numSuccess[i] << sb->numTrials[i] << endl;
     }
     // Close the file and return its path
     file.close();
@@ -241,6 +247,9 @@ string create_state_file(string PLID) {
     string title = "Active game found for player " + PLID;
     char termState;
     bool activeGame = true;
+    // Create the directory server/temp if it does not exist
+    if (mkdir("server/temp", 0777) == -1 && errno != EEXIST) // Exception
+        throw runtime_error("Error creating directory server/temp.");
     // If there is no active game, find the last finished game
     if (gamePath == "") {
         activeGame = false;
@@ -298,12 +307,16 @@ string create_state_file(string PLID) {
     }
     // Build wordProgress indicator if there is an active game
     if (activeGame) {
-        string wordProgress;
+        string wordProgress = "";
         for (char c : word) {
-            if (guessed.find(c) != guessed.end())
-                wordProgress += c + " ";
-            else
-                wordProgress += "_ ";
+            if (guessed.find(c) != guessed.end()) {
+                wordProgress.push_back(c);
+                wordProgress.push_back(' ');
+            }
+            else {
+                wordProgress.push_back('_');
+                wordProgress.push_back(' ');
+            }
         }
         stateFile << "Solved so far: " << wordProgress << endl;
     }
@@ -318,6 +331,9 @@ void create_score_file(string PLID, string gamePath) {
     fstream gameFile(gamePath);
     if (!gameFile.is_open())
         cout << "Error opening game file" << endl;
+    // Create the directory server/scores if it does not exist
+    if (mkdir("server/scores", 0777) == -1 && errno != EEXIST) // Exception
+        throw runtime_error("Error creating directory server/scores.");
     // Get the word from the game file and set a set of letters
     string word, line;
     getline(gameFile, line);
@@ -340,17 +356,24 @@ void create_score_file(string PLID, string gamePath) {
     // The score file name should be score_PLID_DDMMYYYY_HHMMSS.txt
     if (numTrials == 0)
         throw runtime_error("Could not compute score for game with no trials.");
+        
     score = numSuccess * 100 / numTrials;
+    stringstream ss;
+    ss << setfill('0') << setw(3) << score;
+    string score_str = ss.str();
+
     time_t t = time(0);
     tm* now = localtime(&t);
-    string date = to_string(now->tm_year + 1900) + to_string(now->tm_mon + 1) + to_string(now->tm_mday)
-        + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
-    string scorePath = "server/scores/" + to_string(score) + "_" + PLID + "_" + date + ".txt";
+    string date = "";
+    stringstream ss2(date);
+    ss2 << to_string(now->tm_year + 1900) << setfill('0') << setw(2) << to_string(now->tm_mon << 1) << setfill('0') << setw(2) << to_string(now->tm_mday) << "_" << setfill('0') << setw(2) << to_string(now->tm_hour) << setfill('0') << setw(2) << to_string(now->tm_min) << setfill('0') << setw(2) << to_string(now->tm_sec);
+    date = ss2.str();
+    string scorePath = "server/scores/" + score_str + "_" + PLID + "_" + date + ".txt";
     // Open the score file and write the score
     ofstream scoreFile(scorePath, ios::out | ios::in | ios::trunc);
     if (!scoreFile.is_open())    // Exception
         throw runtime_error("Could not create score file.");
-    scoreFile << to_string(score) << " " << PLID << " " << word << " " << to_string(numSuccess) << " " << to_string(numTrials) << endl;
+    scoreFile << score_str << " " << PLID << " " << word << " " << to_string(numSuccess) << " " << to_string(numTrials) << endl;
     scoreFile.close();
 }
 
@@ -365,8 +388,12 @@ void move_to_past_games(string PLID, string status) {
     // Get the current date and time
     time_t t = time(0);
     tm* now = localtime(&t);
-    string date = to_string(now->tm_year + 1900) + to_string(now->tm_mon + 1) + to_string(now->tm_mday)
-        + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
+    string date = "";
+    stringstream ss(date);
+    ss << to_string(now->tm_year + 1900) << setfill('0') << setw(2) << to_string(now->tm_mon + 1) << setfill('0') 
+        << setw(2) << to_string(now->tm_mday) << "_" << setfill('0') << setw(2) << to_string(now->tm_hour) 
+        << setfill('0') << setw(2) << to_string(now->tm_min) << setfill('0') << setw(2) << to_string(now->tm_sec);
+    date = ss.str();
     // Apply the commands: create a directory and move the file there
     string mkdirComm = "mkdir -p server/games/" + PLID;
     string mvComm = "mv " + gamePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";

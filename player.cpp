@@ -1,4 +1,4 @@
-#include "common.h"
+#include "aux.h"
 
 // ======================================== Declarations ===========================================
 
@@ -126,6 +126,8 @@ void handle_command(string line) {
         else if (!is_valid_letter(arg)) // Exception
             cout << "Invalid letter." << endl << endl;
         else {
+            arg[0] = tolower(arg[0]);
+            cout << arg << endl;
             req = "PLG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
             sock = create_socket(addrUDP, progName);
             write_to_socket(sock, addrUDP, req);
@@ -142,6 +144,7 @@ void handle_command(string line) {
         if (!is_valid_word(arg))    // Exception
             cout << "Invalid word." << endl << endl;
         else {
+            transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
             req = "PWG " + PLID + " " + arg + " " + to_string(numTrials + 1) + "\n";
             sock = create_socket(addrUDP, progName);
             write_to_socket(sock, addrUDP, req);

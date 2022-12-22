@@ -1,5 +1,5 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef AUX_H
+#define AUX_H
 
 #include <unistd.h>
 #include <netdb.h>

@@ -1,4 +1,4 @@
-#include "../common.h"
+#include "../aux.h"
 
 // ======================================== Declarations ===========================================
 
@@ -33,6 +33,8 @@ void handle_request_hint(string PLID, int nSock);
 // Send a file to the Player through the TCP socket
 void send_file(int sock, string filePath);
 
+// Check if the request is valid
+bool invalid_command(string req, int nArgs);
 // Handle the signals from the terminal
 void handle_signal_gs(int sig);
 
@@ -57,6 +59,7 @@ int main(int argc, char *argv[]) {
     // Open the words file with the specified name
     else {
         wordsFileName = argv[1];
+        wordsFileName = "server/" + wordsFileName;
         wordsFile.open(wordsFileName);
         if (!wordsFile.is_open())   // Exception
             throw runtime_error("Error opening words file");
@@ -124,6 +127,8 @@ int main(int argc, char *argv[]) {
             int sock = create_socket(addrUDP, progName);
             string req = read_from_socket_udp(sock, addrUDP, &addrPlayer);
             string rep = handle_request_udp(req);
+            if (verbose)    // TODO: rm
+                cout << rep << endl;
             write_to_socket_udp(sock, addrPlayer, rep);
             close(sock);
         }
@@ -177,34 +182,39 @@ string handle_request_udp(string req) {
     ss >> comm;
     // Start
     if (comm == "SNG") {
+        if (invalid_command(req, 2)) return "RSG ERR\n";
         ss >> PLID;
         rep = handle_request_start(PLID);
     }
     // Play
     else if (comm == "PLG") {
+        if (invalid_command(req, 4)) return "ERR\n";
         string letter, trial;
         ss >> PLID >> letter >> trial;
         rep = handle_request_play(PLID, letter, trial);
     }
     // Guess
     else if (comm == "PWG") {
+        if (invalid_command(req, 4)) return "ERR\n";
         string word, trial;
         ss >> PLID >> word >> trial;
         rep = handle_request_guess(PLID, word, trial);
     }
     // Quit/Exit
     else if (comm == "QUT") {
+        if (invalid_command(req, 2)) return "ERR\n";
         ss >> PLID;
         rep = handle_request_quit(PLID);
     }
     // Reveal
     else if (comm == "REV") {
+        if (invalid_command(req, 2)) return "ERR\n";
         ss >> PLID;
         rep = handle_request_reveal(PLID);
     }
     else    // Exception
-        rep = "ERR";
-    return rep + "\0";
+        rep = "ERR\n";
+    return rep;
 }
 
 string handle_request_start(string PLID) {
@@ -242,6 +252,7 @@ string handle_request_play(string PLID, string letter, string trial) {
         return rep + "ERR\n";
     // Open player game file, get the word and the number of letters and errors
     string line, word, pos;
+    bool rpt = false, dup = false; // in case the player request is repeated
     fstream gameFile(gamePath);
     getline(gameFile, line);
     stringstream(line) >> word;
@@ -260,9 +271,14 @@ string handle_request_play(string PLID, string letter, string trial) {
         tr++;
         stringstream(line) >> code >> play;
         if (code == "T") {
+            rpt = false;
             // "DUP": The played letter was sent in a previous trial
-            if (play == letter && tr != stoi(trial))
-                return rep + "DUP " + to_string(stoi(trial) - 1) + "\n";
+            if (play == letter && tr != stoi(trial)) {
+                rep += "DUP " + to_string(stoi(trial)) + "\n";
+                dup = true;
+            }
+            else if (play == letter && tr == stoi(trial))
+                rpt = true;
             // Remove from set. If the letter is not in the word, increase the error count 
             else if (letters.erase(play[0]) == 0)
                 errCount++;
@@ -274,13 +290,19 @@ string handle_request_play(string PLID, string letter, string trial) {
     gameFile.close();
     // cout << "trial: " << trial << " | errCount: " << errCount << " | tr: " << tr << endl; // TODO: rm line
     // "INV": The trial number is invalid
-    if (tr != stoi(trial) - 1)
+    if (tr != stoi(trial) - 1 && !rpt)
         return rep + "INV " + trial + "\n";
+
+    // "DUP": The played letter was sent in a previous trial
+    if (dup)
+        return rep;
+
     // Write to file
-    gameFile.open(gamePath, ios::out | ios::app);
-    gameFile << "T " << letter << endl;
-    gameFile.close();
- 
+    if (!rpt) {    
+        gameFile.open(gamePath, ios::out | ios::app);
+        gameFile << "T " << letter << endl;
+        gameFile.close();
+    }
     // "OK": The letter is in the word
     if (letters.find(letter[0]) != letters.end()) {
         // "WIN": The Player has won the game
@@ -288,7 +310,7 @@ string handle_request_play(string PLID, string letter, string trial) {
             move_to_past_games(PLID, "win");
             return rep + "WIN " + trial + "\n";
         }
-        return rep += "OK " + trial + " " + get_letter_positions(word, letter[0]) + "\n";
+        return rep + "OK " + trial + " " + get_letter_positions(word, letter[0]) + "\n";
     }
     // "OVR": The Player has lost the game
     if (errCount == maxErrors) {
@@ -308,6 +330,7 @@ string handle_request_guess(string PLID, string guess, string trial) {
         return rep + "ERR\n";
     // Open Player game file and get the word and the maximum number of errors
     string line, word;
+    bool rpt = false, dup = false; // in case the player request is repeated
     fstream gameFile(gamePath);
     getline(gameFile, line);
     stringstream(line) >> word;
@@ -324,9 +347,14 @@ string handle_request_guess(string PLID, string guess, string trial) {
         tr++;
         stringstream(line) >> code >> play;
         if (code == "G") {
+            rpt = false;
             // "DUP": The guessed word was sent in a previous trial
-            if (play == guess && tr != stoi(trial) - 1)
-                return rep + "DUP " + to_string(stoi(trial) - 1) + "\n";
+            if (play == guess && tr != stoi(trial)) {
+                rep += "DUP " + to_string(stoi(trial)) + "\n";
+                dup = true;
+            }
+            else if (play == guess && tr == stoi(trial))
+                rpt = true;
             // Increase the error count
             else
                 errCount++;
@@ -338,12 +366,18 @@ string handle_request_guess(string PLID, string guess, string trial) {
     gameFile.close();
     // cout << "trial: " << trial << " | tr: " << tr << " | errCount: " << errCount << " | maxErrors: " << maxErrors << endl; // TODO: rm line
     // "INV": The trial number is invalid
-    if (tr != stoi(trial) - 1)
+    if (tr != stoi(trial) - 1 && !rpt)
         return rep + "INV " + trial + "\n";
+
+    // "DUP": The guessed word was sent in a previous trial
+    if (dup)
+        return rep;
     // Write guess to file
-    gameFile.open(gamePath, ios::out | ios::app);
-    gameFile << "G " << guess << endl;
-    gameFile.close();
+    if (!rpt) {
+        gameFile.open(gamePath, ios::out | ios::app);
+        gameFile << "G " << guess << endl;
+        gameFile.close();
+    }
     // "WIN": The word guess was successful
     if (guess == word) {
         move_to_past_games(PLID, "win");
@@ -394,11 +428,15 @@ string handle_request_reveal(string PLID) {
 void setup_socket_tcp(int sock, addrinfo *addr) {
     // TCP connection request
     if (addr->ai_socktype == SOCK_STREAM) {
+        // Add the SO_REUSEADDR flag to avoid binding socket errors
+        int optval = 1;
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
+            throw runtime_error("Error setting socket options.");
         while (bind(sock, addr->ai_addr, addr->ai_addrlen) < 0)
-            throw runtime_error("Error binding TCP socket");
+            throw runtime_error("Error binding TCP socket.");
         // Listen for incoming connections
         if (listen(sock, 10) < 0)
-            throw runtime_error("Error listening on TCP socket");
+            throw runtime_error("Error listening on TCP socket.");
     }
     else    // Exception
         throw runtime_error("Invalid address type.");
@@ -443,6 +481,8 @@ void handle_request_scoreboard(int sock) {
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to scoreboard request.");
         string filePath = create_scoreboard_file(scoreBoard);
+        if (verbose)    // TODO: rm
+            cout << rep;
         send_file(sock, filePath);
         // Delete the temporary file
         if (remove(filePath.c_str()) != 0)
@@ -465,10 +505,9 @@ void handle_request_hint(string PLID, int sock) {
         rep += "OK ";
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to hint request.");
+        if (verbose)    // TODO: rm
+            cout << rep;
         send_file(sock, filePath);
-        // Delete the temporary file
-        if (remove(filePath.c_str()) != 0)
-            throw runtime_error("Error deleting temporary hint file.");
     }
 }
 
@@ -488,6 +527,8 @@ void handle_request_state(string PLID, int sock) {
         if (send(sock, rep.c_str(), rep.length(), 0) < 0)
             throw runtime_error("Error sending TCP reply to state request.");
         string filePath = create_state_file(PLID);
+        if (verbose)    // TODO: rm
+            cout << rep;
         send_file(sock, filePath);
         // Delete the temporary file
         if (remove(filePath.c_str()) != 0)
@@ -498,17 +539,15 @@ void handle_request_state(string PLID, int sock) {
 void send_file(int sock, string filePath) {
     // Extract the substring after the last slash
     size_t lastSlashPos = filePath.find_last_of('/');
-    string fileName = filePath.substr(lastSlashPos + 1);
-    string fileSize = to_string(get_file_size(filePath));
-    size_t fileNameLen = fileName.length(), fileSizeLen = fileSize.length();
-    fileName[fileNameLen] = '\0';
-    fileSize[fileSizeLen] = '\0';
+    string fileName = filePath.substr(lastSlashPos + 1) + " ";
+    string fileSize = to_string(get_file_size(filePath)) + " ";
     // Send the file name and size
-    if (send(sock, fileName.c_str(), fileNameLen + 1, 0) < 0)
+    if (send(sock, fileName.c_str(), fileName.length(), 0) < 0)
         throw runtime_error("Error sending file name.");
-    if (send(sock, fileSize.c_str(), fileSizeLen + 1, 0) < 0)
+    if (send(sock, fileSize.c_str(), fileSize.length(), 0) < 0)
         throw runtime_error("Error sending file size.");
-        
+    if (verbose)    // TODO: rm this if clause
+        cout << fileName << fileSize << "<DATA>" << endl << endl;  
     // Send the file contents
     FILE *fd;
     ssize_t n, bytesRead, bytesSent;
@@ -533,6 +572,24 @@ void send_file(int sock, string filePath) {
 
 // ==================================== Auxiliary Functions ========================================
 
+bool invalid_command(string req, int nArgs) {
+    string command;
+    stringstream ss(req);
+    int command_len = 0, req_len = req.length();
+    if (req_len == 0)
+        return true;
+    for (int i = 0; i < nArgs; i++) {
+        ss >> command;
+        command_len += command.length();
+        if (command_len == 0)
+            return true;
+    }
+    // Check the syntax: check if there are no extra parameters or check for too many spaces
+    if (!(ss.eof() || ss.peek() == '\n') || (req_len - command_len != nArgs))
+        return true;
+    return false;
+}
+
 void handle_signal_gs(int sig) {
     // Close the words file
     if (wordsFile.is_open())
@@ -548,12 +605,12 @@ void handle_signal_gs(int sig) {
     // Ctrl + C
     if (sig == SIGINT) {
         cout << endl << "Closing process..." << endl;
+        // Remove all active games if there are any
+        string comm = "rm -f server/games/GAME_* 2> /dev/null";
+        system(comm.c_str());
         // Close all file descriptors (sockets and files)
         for (int i = 0; i < getdtablesize(); i++)
             close(i);
-        // Remove all active games left
-        string comm = "rm server/games/GAME_*";
-        system(comm.c_str());
         exit(0);
     }
 }
