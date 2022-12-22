@@ -119,7 +119,6 @@ int main(int argc, char *argv[]) {
     }
     // Parent process listens to UDP connections
     else {
-        pidChild = pid;
         while (true) {
             struct sockaddr_in addrPlayer;
             int sock = create_socket(addrUDP, progName);
@@ -289,10 +288,10 @@ string handle_request_play(string PLID, string letter, string trial) {
             move_to_past_games(PLID, "win");
             return rep + "WIN " + trial + "\n";
         }
-        return rep += "OK " + trial + " " + get_letter_positions(word, letter[0]);
+        return rep += "OK " + trial + " " + get_letter_positions(word, letter[0]) + "\n";
     }
     // "OVR": The Player has lost the game
-    if (errCount + 1 == maxErrors) {
+    if (errCount == maxErrors) {
         move_to_past_games(PLID, "fail");
         return rep + "OVR " + trial + "\n";
     }
@@ -351,7 +350,7 @@ string handle_request_guess(string PLID, string guess, string trial) {
         return rep + "WIN " + trial + "\n";
     }
     // "OVR": The word guess was not successful and the game is over
-    if (errCount + 1 == maxErrors) {
+    if (errCount == maxErrors) {
         move_to_past_games(PLID, "fail");;
         return rep + "OVR " + trial + "\n";
     }
@@ -552,6 +551,9 @@ void handle_signal_gs(int sig) {
         // Close all file descriptors (sockets and files)
         for (int i = 0; i < getdtablesize(); i++)
             close(i);
+        // Remove all active games left
+        string comm = "rm server/games/GAME_*";
+        system(comm.c_str());
         exit(0);
     }
 }

@@ -141,6 +141,9 @@ string get_word(ifstream &wordsFile) {
     string line, word, hint;
     if (!wordsFile.is_open())
         throw runtime_error("Error obtaining a word from the words file.");
+    // If the pointer is in the end, move it to the top, without clearing the file
+    if (wordsFile.peek() == EOF)
+        wordsFile.seekg(0, ios::beg);
     getline(wordsFile, line);
     stringstream(line) >> word >> hint;
     return word + " " + hint;
@@ -359,15 +362,14 @@ void move_to_past_games(string PLID, string status) {
     if (status == "win")
         create_score_file(PLID, gamePath);
     map<string, string> statusCodes = {{"win", "W"}, {"fail", "F"}, {"quit", "Q"}};
-    string mkdirComm = "mkdir -p " + PLID + " ", mvComm = "mv ";
     // Get the current date and time
     time_t t = time(0);
     tm* now = localtime(&t);
     string date = to_string(now->tm_year + 1900) + to_string(now->tm_mon + 1) + to_string(now->tm_mday)
         + "_" + to_string(now->tm_hour) + to_string(now->tm_min) + to_string(now->tm_sec);
     // Apply the commands: create a directory and move the file there
-    mkdirComm += "server/games/" + PLID;
-    mvComm += gamePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
+    string mkdirComm = "mkdir -p server/games/" + PLID;
+    string mvComm = "mv " + gamePath + " server/games/" + PLID + "/" + date + "_" + statusCodes[status] + ".txt";
     system(mkdirComm.c_str());
     system(mvComm.c_str());
     return;
