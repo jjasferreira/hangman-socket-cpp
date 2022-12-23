@@ -1,6 +1,6 @@
 # hangman-socket-cpp
 
-IST Computer Networks course's project (LEIC-A 2022/2023). Made by [João Cardoso](<(https://github.com/joaoncardoso)>) and [José João Ferreira](https://github.com/jjasferreira).
+IST Computer Networks course's project (LEIC-A 2022/2023). Made by [João Cardoso](https://github.com/joaoncardoso) and [José João Ferreira](https://github.com/jjasferreira).
 
 ---
 
@@ -46,7 +46,7 @@ make
 ```
 
 If you wish to change the set of words being used, you can edit them manually. However, be aware that every hint associated with a word must have its own image file in the `server/images`.
-The defaut port being used for the UDP and TCP sockets is `58092`. To use a custom port for communincation, use the `-p` flag and specify it in the _gsPort_ field.
+The default port being used for the UDP and TCP sockets is `58092`. To use a custom port for communication, use the `-p` flag and specify it in the _gsPort_ field.
 To operate the **Game Server** in verbose mode (i.e. to have the **Player** requests being printed to the terminal), make use of the flag `-v`.
 
 3. You can execute the **Player** by running:
