@@ -1,4 +1,4 @@
-#include "aux.h"
+#include "auxiliary.h"
 
 bool is_valid_port(const string &arg) {
     return all_of(arg.begin(), arg.end(), ::isdigit) && (stoi(arg) >= 1024) && (stoi(arg) <= 65536);
@@ -447,7 +447,7 @@ scorelist* get_top_scores() {
     string filePath, dir = "server/scores/";
     // Scan the directory for the top 10 scores
     int i = 0, numEntries = scandir(dir.c_str(), &filelist, 0, alphasort);
-    if (numEntries < 0)
+    if (numEntries <= 2)
         return NULL;
     else {
         while (numEntries--) {

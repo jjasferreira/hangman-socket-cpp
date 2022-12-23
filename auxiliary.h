@@ -1,5 +1,5 @@
-#ifndef AUX_H
-#define AUX_H
+#ifndef AUXILIARY_H
+#define AUXILIARY_H
 
 #include <unistd.h>
 #include <netdb.h>

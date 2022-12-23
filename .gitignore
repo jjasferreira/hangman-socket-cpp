@@ -2,10 +2,7 @@
 gs
 player
 
-
 *.txt
 !words.txt
-!player_scripts/*.txt
-
 
 .vscode

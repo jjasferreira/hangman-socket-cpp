@@ -1,5 +1,0 @@
-start 100001
-hint
-RCOMP witch.jpg
-quit
-exit

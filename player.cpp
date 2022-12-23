@@ -1,4 +1,4 @@
-#include "aux.h"
+#include "auxiliary.h"
 
 // ======================================== Declarations ===========================================
 
@@ -353,11 +353,11 @@ void handle_reply_scoreboard(int sock) {
     while ((n = read(sock, &c, 1)) > 0 && c != ' ')
         type += c;
     if (type != "RSB") {    // Exception
-        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        cout << "Unexpected reply from the server: " << type << " " << status << endl << endl;
         return;
     }
     // Get the status
-    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ' && c != '\n')
         status += c;
     // "EMPTY": The scoreboard is empty
     if (status == "EMPTY")
@@ -371,7 +371,7 @@ void handle_reply_scoreboard(int sock) {
         cout << "Saved scoreboard to file " << fname << " (" << fsize << " bytes)." << endl << endl;
     }
     else    // Exception
-        cout << "Undefined reply from the server: " << type << status << endl << endl;
+        cout << "Undefined reply from the server: " << type << " " << status << endl << endl;
 }
 
 void handle_reply_hint(int sock) {
@@ -383,11 +383,11 @@ void handle_reply_hint(int sock) {
     while ((n = read(sock, &c, 1)) > 0 && c != ' ')
         type += c;
     if (type != "RHL") {    // Exception
-        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        cout << "Unexpected reply from the server: " << type << " " << status << endl << endl;
         return;
     }
     // Get the status
-    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ' && c != '\n')
         status += c;
     // "NOK": There is no file to be sent
     if (status == "NOK")
@@ -401,7 +401,7 @@ void handle_reply_hint(int sock) {
         cout << "Saved hint to file " << fname << " (" << fsize << " bytes)." << endl;
     }
     else    // Exception
-        cout << "Undefined reply from the server: " << type << status << endl << endl;
+        cout << "Undefined reply from the server: " << type << " " << status << endl << endl;
     print_word_progress();
 }
 
@@ -414,11 +414,11 @@ void handle_reply_state(int sock) {
     while ((n = read(sock, &c, 1)) > 0 && c != ' ')
         type += c;
     if (type != "RST") {    // Exception
-        cout << "Unexpected reply from the server: " << type << status << endl << endl;
+        cout << "Unexpected reply from the server: " << type << " " << status << endl << endl;
         return;
     }
     // Get the status
-    while ((n = read(sock, &c, 1)) > 0 && c != ' ')
+    while ((n = read(sock, &c, 1)) > 0 && c != ' ' && c != '\n')
         status += c;
     // "NOK": There are no games (active or finished)
     if (status == "NOK")
@@ -436,7 +436,7 @@ void handle_reply_state(int sock) {
             game = false;
     }
     else    // Exception
-        cout << "Undefined reply from the server: " << type << status << endl << endl;
+        cout << "Undefined reply from the server: " << type << " " << status << endl << endl;
 }
 
 void handle_reply_quit(string rep) {

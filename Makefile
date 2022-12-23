@@ -7,13 +7,13 @@
   CFLAGS = -g -Wall
 
 # The build target 
-  TARGET = aux.o gs player
-  OBJ = aux.o
+  TARGET = auxiliary.o gs player
+  OBJ = auxiliary.o
 
 all: $(TARGET)
 
-aux.o: aux.cpp
-	$(CC) -c $(CFLAGS) -o aux.o aux.cpp
+auxiliary.o: auxiliary.cpp
+	$(CC) -c $(CFLAGS) -o auxiliary.o auxiliary.cpp
  
 gs: $(OBJ) server/gs.cpp
 	$(CC) $(CFLAGS) -o gs server/gs.cpp $(OBJ)
