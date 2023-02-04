@@ -272,7 +272,9 @@ string create_state_file(string PLID) {
     statePath = "server/temp/STATE_" + PLID + ".txt";
     ofstream stateFile(statePath, ios::out | ios::trunc);
     stateFile << title << endl;
-    stateFile << "Word: " << word << "; Hint file: " << hint << endl;
+    if (!activeGame)
+        stateFile << "Word: " << word << "; ";
+    stateFile << "Hint file: " << hint << endl;
     // Compute transaction count
     int transCount = 0;
     while (getline(gameFile, line)) {
