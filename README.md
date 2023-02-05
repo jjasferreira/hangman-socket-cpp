@@ -2,6 +2,8 @@
 
 IST Computer Networks course's project (LEIC-A 2022/2023). Made by [João Cardoso](https://github.com/joaoncardoso) and [José João Ferreira](https://github.com/jjasferreira).
 
+<img src="server/images/image.png" alt="Image" width="800"/>
+
 ---
 
 ## Brief description
