@@ -82,9 +82,10 @@ void print_welcome_message() {
     cout << "guess <word>\tGuess the word\t\t(alias: gw)" << endl;
     cout << "scoreboard\tDisplay scoreboard\t(alias: sb)" << endl;
     cout << "hint\t\tGet a hint for the word\t(alias: h)" << endl;
+    cout << "state\t\tDisplay game state\t(alias: st)" << endl;
+    cout << "reveal\t\tReveal the word\t\t(alias: rev)" << endl << endl;
     cout << "quit\t\tQuit game" << endl;
     cout << "exit\t\tExit application" << endl;
-    cout << "reveal\t\tReveal the word\t\t(alias: rev)" << endl << endl;
 }
 
 void print_word_progress() {
@@ -470,11 +471,11 @@ void handle_reply_reveal(string rep) {
         cout << "The PLID or the request was invalid or there is no ongoing game for this Player." << endl << endl;
     // "word": The word was successfully revealed
     else if (is_valid_word(status)) {
-        game = false;
         for (int i = 0; i < numLetters; i++)
             wordProgress[i] = status[i];
         cout << "You have revealed the word." << endl;
         print_word_progress();
+        game = false;
         int sock = create_socket(addrUDP, progName);
         write_to_socket(sock, addrUDP, "QUT " + PLID + "\n");
         rep = read_from_socket(sock);
